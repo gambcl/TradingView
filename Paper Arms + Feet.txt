@@ -1,5 +1,5 @@
 //@version=6
-indicator("Paper Arms + Feet v1.1", overlay=false)
+indicator("Paper Arms + Feet v1.2", overlay=false)
 
 enum LRSI_Type
     LaguerreRSI
@@ -26,8 +26,8 @@ realPrice = ticker.new(prefix=syminfo.prefix, ticker=syminfo.ticker)
 displayRealOpen = showRealOpen ? display.all : display.none
 displayRealClose = showRealClose ? display.all : display.none
 
-plotchar(series=chart.is_heikinashi ? realOpen : na, title="Real open dots", location=location.absolute, color=realOpenColor, editable=false, char="•", size=size.auto, force_overlay=true, display=displayRealOpen)
-plotchar(series=chart.is_heikinashi ? realClose : na, title="Real close dots", location=location.absolute, color=realCloseColor, editable=false, char="•", size=size.auto, force_overlay=true, display=displayRealClose)
+plotchar(series=chart.is_heikinashi ? realOpen : na, title="Real Open Dots", location=location.absolute, color=realOpenColor, editable=false, char="•", size=size.auto, force_overlay=true, display=displayRealOpen)
+plotchar(series=chart.is_heikinashi ? realClose : na, title="Real Close Dots", location=location.absolute, color=realCloseColor, editable=false, char="•", size=size.auto, force_overlay=true, display=displayRealClose)
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -43,20 +43,19 @@ emaSlow = ta.ema(close, emaSlowLen)
 var displayEMACloud = showEMACloud ? display.all : display.none
 emaFastPlot = plot(emaFast, "Fast EMA", color=color.green, linewidth=1, force_overlay=true, display=displayEMACloud)
 emaSlowPlot = plot(emaSlow, "Slow EMA", color=color.red, linewidth=1, force_overlay = true, display=displayEMACloud)
-emaColor = emaFast >= emaSlow ? color.green : color.red
-fill(emaFastPlot, emaSlowPlot, color.new(emaColor, 40), "EMA Cloud", display=displayEMACloud)
+fill(emaFastPlot, emaSlowPlot, emaFast >= emaSlow ? color.rgb(76,175,80, 40) : color.rgb(255, 82, 82, 40), "EMA Cloud", display=displayEMACloud)
 
 
 ////////////////////////////////////////////////////////////////////////////////
 // Oscillator Regions
 ////////////////////////////////////////////////////////////////////////////////
 
-plot100 = plot(100, display=display.none)
-plot80 = plot(80, display=display.none)
-plot20 = plot(20, display=display.none)
-plot0 = plot(0, display=display.none)
-fill(plot100, plot80, color.rgb(56,142,60,40))
-fill(plot0, plot20, color.rgb(178,40,51,40))
+plot100 = plot(100, display=display.none, editable=false)
+plot80 = plot(80, display=display.none, editable=false)
+plot20 = plot(20, display=display.none, editable=false)
+plot0 = plot(0, display=display.none, editable=false)
+fill(plot100, plot80, color.rgb(56,142,60,40), "Overbought Region")
+fill(plot0, plot20, color.rgb(178,40,51,40), "Oversold Region")
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -161,13 +160,6 @@ lrsife_LaRSI = (CU + CD != 0) ? 100 * (CU / (CU + CD)) : 0
 LaRSI = (lrsiType == LRSI_Type.LaguerreRSI_FractalEnergy) ? lrsife_LaRSI : lrsi_LaRSI
 plot(LaRSI, title='Laguerre RSI', linewidth=2, color=color.white)
 
-lrsiBuyCond = ta.crossover(LaRSI, 20)
-lrsiSellCond = ta.crossunder(LaRSI, 80)
-bgcolor(lrsiBuyCond ? color.new(color.green, 50) : lrsiSellCond ? color.new(color.red, 50) : na)
-
-plotshape(lrsiBuyCond, style=shape.triangleup, location=location.belowbar, color=color.yellow, size=size.auto, force_overlay=true, display=display.pane)
-plotshape(lrsiSellCond, style=shape.triangledown, location=location.abovebar, color=color.yellow, size=size.auto, force_overlay=true, display=display.pane)
-
 
 ////////////////////////////////////////////////////////////////////////////////
 // Trend
@@ -176,7 +168,66 @@ plotshape(lrsiSellCond, style=shape.triangledown, location=location.abovebar, co
 prevBarTrend = haClose[1] >= haOpen[1] ? 1 : -1
 currBarTrend = haClose[0] >= haOpen[0] ? 1 : -1
 trendColor = (currBarTrend == prevBarTrend and currBarTrend > 0) ? color.green : ((currBarTrend == prevBarTrend and currBarTrend < 0) ? color.red : color.yellow)
-plotshape(50, style = shape.circle, location = location.absolute, color = trendColor, size = size.tiny, display = display.pane)
+plotshape(50, title="Trend Dots", style = shape.circle, location = location.absolute, color = trendColor, size = size.tiny, display = display.pane)
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Alerts
+////////////////////////////////////////////////////////////////////////////////
+
+// Enter long - LRSI
+enterLongLRSI = ta.crossover(LaRSI, 20)
+plotshape(enterLongLRSI, title="Enter LONG - LRSI", style=shape.arrowup, location=location.belowbar, color=color.green, size=size.normal, force_overlay=true, display=display.pane)
+alertcondition(enterLongLRSI, title='Enter LONG - LRSI', message='Laguerre RSI crossed OVER 20')
+// Re-enter long - Return to same color trend dot
+reenterLongSameTrendDot = (emaFast > emaSlow) and (currBarTrend == 1) and (currBarTrend[1] == 1) and (currBarTrend[1] != prevBarTrend[1])
+plotshape(reenterLongSameTrendDot, title="Re-enter LONG - Same Trend Dot", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.auto, force_overlay=true, display=display.pane)
+alertcondition(reenterLongSameTrendDot, title='Re-enter LONG - Same Trend Dot', message='Trend returning to bullish')
+// Any enter long
+anyEnterLong = enterLongLRSI or reenterLongSameTrendDot
+alertcondition(anyEnterLong, title='Enter LONG - Any')
+
+
+// Enter short - LRSI
+enterShortLRSI = ta.crossunder(LaRSI, 80)
+plotshape(enterShortLRSI, title="Enter SHORT - LRSI", style=shape.arrowdown, location=location.abovebar, color=color.red, size=size.normal, force_overlay=true, display=display.pane)
+alertcondition(enterShortLRSI, title='Enter SHORT - LRSI', message='Laguerre RSI crossed UNDER 80')
+// Re-enter short - Return to same color trend dot
+reenterShortSameTrendDot = (emaFast < emaSlow) and (currBarTrend == -1) and (currBarTrend[1] == -1) and (currBarTrend[1] != prevBarTrend[1])
+plotshape(reenterShortSameTrendDot, title="Re-enter SHORT - Same Trend Dot", style=shape.triangledown, location=location.abovebar, color=color.red, size=size.auto, force_overlay=true, display=display.pane)
+alertcondition(reenterShortSameTrendDot, title='Re-enter SHORT - Same Trend Dot', message='Trend returning to bearish')
+// Any enter short
+anyEnterShort = enterShortLRSI or reenterShortSameTrendDot
+alertcondition(anyEnterShort, title='Enter SHORT - Any')
+
+
+bgcolor(enterLongLRSI ? color.new(color.green, 50) : enterShortLRSI ? color.new(color.red, 50) : na, title="LRSI Entry Signal Background")
+
+
+// Exit long - Opposite flat top
+exitLongOppositeFlatTop = (emaFast > emaSlow) and (haClose < haOpen) and (haHigh == haOpen)
+plotshape(exitLongOppositeFlatTop, title="Exit LONG - Opposite Flat Top", style=shape.xcross, location=location.abovebar, color=color.green, size=size.auto, force_overlay=true, display=display.pane)
+alertcondition(exitLongOppositeFlatTop, title='Exit LONG - Opposite Flat Top', message='Bearish HA candle with flat top')
+// Exit long - Opposite color trend dot
+exitLongOppositeTrendDot = (emaFast > emaSlow) and (currBarTrend == -1) and (currBarTrend[1] == -1) and (currBarTrend[1] != prevBarTrend[1])
+plotshape(exitLongOppositeTrendDot, title="Exit LONG - Opposite Trend", style=shape.xcross, location=location.abovebar, color=color.green, size=size.auto, force_overlay=true, display=display.pane)
+alertcondition(exitLongOppositeTrendDot, title='Exit LONG - Opposite Trend', message='Bearish trend dot')
+// Any exit long
+anyExitLong = exitLongOppositeFlatTop or exitLongOppositeTrendDot
+alertcondition(anyExitLong, title='Exit LONG - Any')
+
+
+// Exit short - Opposite flat bottom
+exitShortOppositeFlatBottom = (emaFast < emaSlow) and (haClose > haOpen) and (haLow == haOpen)
+plotshape(exitShortOppositeFlatBottom, title="Exit SHORT - Opposite Flat Bottom", style=shape.xcross, location=location.belowbar, color=color.red, size=size.auto, force_overlay=true, display=display.pane)
+alertcondition(exitShortOppositeFlatBottom, title='Exit SHORT - Opposite Flat Bottom', message='Bullish HA candle with flat bottom')
+// Exit short - Opposite color trend dot
+exitShortOppositeTrendDot = (emaFast < emaSlow) and (currBarTrend == 1) and (currBarTrend[1] == 1) and (currBarTrend[1] != prevBarTrend[1])
+plotshape(exitShortOppositeTrendDot, title="Exit SHORT - Opposite Trend", style=shape.xcross, location=location.belowbar, color=color.red, size=size.auto, force_overlay=true, display=display.pane)
+alertcondition(exitShortOppositeTrendDot, title='Exit SHORT - Opposite Trend', message='Bullish trend dot')
+// Any exit short
+anyExitShort = exitShortOppositeFlatBottom or exitShortOppositeTrendDot
+alertcondition(anyExitShort, title='Exit SHORT - Any')
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -202,11 +253,3 @@ plot(ma2Enabled ? ma2 : na, "MA2", color.yellow, linewidth=2, force_overlay=true
 vwapEnabled = input.bool(false, "Enable VWAP", group="VWAP")
 vwap = ta.vwap(realClose)
 plot(vwapEnabled ? vwap : na, "VWAP", color.aqua, linewidth=2, force_overlay=true)
-
-
-////////////////////////////////////////////////////////////////////////////////
-// Alerts
-////////////////////////////////////////////////////////////////////////////////
-
-alertcondition(lrsiBuyCond, title='Enter BUY', message='Laguerre RSI crosses OVER 20 - BUY SIGNAL!')
-alertcondition(lrsiSellCond, title='Enter SELL', message='Laguerre RSI crosses UNDER 80 - SELL SIGNAL!')
