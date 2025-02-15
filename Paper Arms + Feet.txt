@@ -1,11 +1,19 @@
 //@version=6
-indicator("Paper Arms + Feet v1.00", overlay=false)
+indicator("Paper Arms + Feet v1.1", overlay=false)
 
+enum LRSI_Type
+    LaguerreRSI
+    LaguerreRSI_FractalEnergy
+
+lrsiType = input.enum(LRSI_Type.LaguerreRSI_FractalEnergy, "LaguerreRSI Type")
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// Heikin-Ashi open/close
+// Heikin-Ashi
 ////////////////////////////////////////////////////////////////////////////////
+
+haTicker = ticker.heikinashi(syminfo.tickerid)
+[haOpen, haHigh, haLow, haClose] = request.security(haTicker, timeframe.period, [open, high, low, close])
 
 showRealOpen = input.bool(true, "Show Real Open", group="Heikin-Ashi")
 realOpenColor = input.color(color.white, "Real Open Color", group="Heikin-Ashi")
@@ -13,29 +21,42 @@ showRealClose = input.bool(true, "Show Real Close", group="Heikin-Ashi")
 realCloseColor = input.color(color.fuchsia, "Real Close Color", group="Heikin-Ashi")
 
 realPrice = ticker.new(prefix=syminfo.prefix, ticker=syminfo.ticker)
-realOpen = request.security(symbol=realPrice, timeframe='', expression=open, gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
-realClose = request.security(symbol=realPrice, timeframe='', expression=close, gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+[realOpen, realHigh, realLow, realClose] = request.security(realPrice, timeframe.period, [open, high, low, close])
 
 displayRealOpen = showRealOpen ? display.all : display.none
 displayRealClose = showRealClose ? display.all : display.none
 
-plotchar(series=realOpen, title="Real open dots", location=location.absolute, color=realOpenColor, editable=false, char="•", size=size.auto, force_overlay=true, display=displayRealOpen)
-plotchar(series=realClose, title="Real close dots", location=location.absolute, color=realCloseColor, editable=false, char="•", size=size.auto, force_overlay=true, display=displayRealClose)
+plotchar(series=chart.is_heikinashi ? realOpen : na, title="Real open dots", location=location.absolute, color=realOpenColor, editable=false, char="•", size=size.auto, force_overlay=true, display=displayRealOpen)
+plotchar(series=chart.is_heikinashi ? realClose : na, title="Real close dots", location=location.absolute, color=realCloseColor, editable=false, char="•", size=size.auto, force_overlay=true, display=displayRealClose)
 
 
 ////////////////////////////////////////////////////////////////////////////////
 // EMA Cloud
 ////////////////////////////////////////////////////////////////////////////////
 
+showEMACloud = input.bool(true, "Show EMA Cloud", group="EMA Cloud")
 emaFastLen = input.int(9, "Fast EMA Length", minval=1, group="EMA Cloud")
 emaSlowLen = input.int(21, "Slow EMA Length", minval=1, group="EMA Cloud")
 emaFast = ta.ema(close, emaFastLen)
 emaSlow = ta.ema(close, emaSlowLen)
 
-emaFastPlot = plot(emaFast, "Fast EMA", color=color.green, linewidth=1, force_overlay=true)
-emaSlowPlot = plot(emaSlow, "Slow EMA", color=color.red, linewidth=1, force_overlay = true)
+var displayEMACloud = showEMACloud ? display.all : display.none
+emaFastPlot = plot(emaFast, "Fast EMA", color=color.green, linewidth=1, force_overlay=true, display=displayEMACloud)
+emaSlowPlot = plot(emaSlow, "Slow EMA", color=color.red, linewidth=1, force_overlay = true, display=displayEMACloud)
 emaColor = emaFast >= emaSlow ? color.green : color.red
-fill(emaFastPlot, emaSlowPlot, color.new(emaColor, 40), "EMA Cloud")
+fill(emaFastPlot, emaSlowPlot, color.new(emaColor, 40), "EMA Cloud", display=displayEMACloud)
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Oscillator Regions
+////////////////////////////////////////////////////////////////////////////////
+
+plot100 = plot(100, display=display.none)
+plot80 = plot(80, display=display.none)
+plot20 = plot(20, display=display.none)
+plot0 = plot(0, display=display.none)
+fill(plot100, plot80, color.rgb(56,142,60,40))
+fill(plot0, plot20, color.rgb(178,40,51,40))
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -46,48 +67,146 @@ fill(emaFastPlot, emaSlowPlot, color.new(emaColor, 40), "EMA Cloud")
 // Developer: John EHLERS
 // © KivancOzbilgic
 // Author:Kıvanç Özbilgiç
-src = input(title='Source', defval=close, group="Laguerre RSI")
-alpha = input.float(title='Alpha', minval=0, maxval=1, step=0.1, defval=0.2, group="Laguerre RSI")
+lrsi_alpha = input.float(title='Alpha', minval=0, maxval=1, step=0.1, defval=0.2, group="Laguerre RSI")
 
-gamma = 1 - alpha
-L0 = 0.0
-L0 := (1 - gamma) * src + gamma * nz(L0[1])
-L1 = 0.0
+lrsi_gamma = 1 - lrsi_alpha
+lrsi_L0 = 0.0
+lrsi_L0 := (1 - lrsi_gamma) * realClose + lrsi_gamma * nz(lrsi_L0[1])
+lrsi_L1 = 0.0
+lrsi_L1 := -lrsi_gamma * lrsi_L0 + nz(lrsi_L0[1]) + lrsi_gamma * nz(lrsi_L1[1])
+lrsi_L2 = 0.0
+lrsi_L2 := -lrsi_gamma * lrsi_L1 + nz(lrsi_L1[1]) + lrsi_gamma * nz(lrsi_L2[1])
+lrsi_L3 = 0.0
+lrsi_L3 := -lrsi_gamma * lrsi_L2 + nz(lrsi_L2[1]) + lrsi_gamma * nz(lrsi_L3[1])
+lrsi_cu = (lrsi_L0 > lrsi_L1 ? lrsi_L0 - lrsi_L1 : 0) + (lrsi_L1 > lrsi_L2 ? lrsi_L1 - lrsi_L2 : 0) + (lrsi_L2 > lrsi_L3 ? lrsi_L2 - lrsi_L3 : 0)
+lrsi_cd = (lrsi_L0 < lrsi_L1 ? lrsi_L1 - lrsi_L0 : 0) + (lrsi_L1 < lrsi_L2 ? lrsi_L2 - lrsi_L1 : 0) + (lrsi_L2 < lrsi_L3 ? lrsi_L3 - lrsi_L2 : 0)
+lrsi_temp = lrsi_cu + lrsi_cd == 0 ? -1 : lrsi_cu + lrsi_cd
+lrsi_LaRSI = 100 * (lrsi_temp == -1 ? 0 : lrsi_cu / lrsi_temp)
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Laguerre RSI with Fractal Energy
+// https://usethinkscript.com/threads/rsi-laguerre-with-fractal-energy-for-thinkorswim.116/
+////////////////////////////////////////////////////////////////////////////////
+
+nFE = input.int(title="NFE", tooltip="Number of bars used in Fractal Efficiency calculations", minval=1, defval=8, group="Laguerre RSI with Fractal Energy")
+Glength = input.int(title="GLength", tooltip="Period length for Go/Gh/Gl/Gc filter", minval=1, defval=13, group="Laguerre RSI with Fractal Energy")
+betaDev = input.int(title="BetaDev", tooltip="Controls reactivity in alpha/beta computations", minval=1, defval=8, group="Laguerre RSI with Fractal Energy")
+
+float w = (2.0 * math.pi / Glength)
+float beta = (1 - math.cos(w)) / (math.pow(1.414, 2.0 / betaDev) - 1)
+float alpha = (-beta + math.sqrt(beta * beta + 2 * beta))
+float Go = na
+float Gh = na
+float Gl = na
+float Gc = na
+Go := math.pow(alpha, 4) * realOpen + 4 * (1.0 - alpha) * nz(Go[1]) - 6 * math.pow( 1 - alpha, 2) * nz(Go[2]) + 4 * math.pow( 1 - alpha, 3) * nz(Go[3]) - math.pow( 1 - alpha, 4 ) * nz(Go[4])
+Gh := math.pow(alpha, 4) * realHigh + 4 * (1.0 - alpha) * nz(Gh[1]) - 6 * math.pow( 1 - alpha, 2 ) * nz(Gh[2]) + 4 * math.pow( 1 - alpha, 3 ) * nz(Gh[3]) - math.pow( 1 - alpha, 4 ) * nz(Gh[4])
+Gl := math.pow(alpha, 4) * realLow + 4 * (1.0 - alpha) * nz(Gl[1]) - 6 * math.pow( 1 - alpha, 2 ) * nz(Gl[2]) + 4 * math.pow( 1 - alpha, 3 ) * nz(Gl[3]) - math.pow( 1 - alpha, 4 ) * nz(Gl[4])
+Gc := math.pow(alpha, 4) * realClose + 4 * (1.0 - alpha) * nz(Gc[1]) - 6 * math.pow( 1 - alpha, 2 ) * nz(Gc[2]) + 4 * math.pow( 1 - alpha, 3 ) * nz(Gc[3]) - math.pow( 1 - alpha, 4 ) * nz(Gc[4])
+// Variables:
+float o = na
+float h = na
+float l = na
+float c = na
+float CU1 = na
+float CU2 = na
+float CU = na
+float CD1 = na
+float CD2 = na
+float CD = na
+float L0 = na
+float L1 = na
+float L2 = na
+float L3 = na
+
+// Calculations
+o := (Go + nz(Gc[1])) / 2.0
+h := math.max(Gh, nz(Gc[1]))
+l := math.min(Gl, nz(Gc[1]))
+c := (o + h + l + Gc) / 4.0
+gamma = math.log(math.sum((math.max(Gh, nz(Gc[1])) - math.min(Gl, nz(Gc[1]))), nFE) / (ta.highest(Gh, nFE) - ta.lowest(Gl, nFE))) / math.log(nFE)
+L0 := (1.0 - gamma) * Gc + gamma * nz(L0[1])
 L1 := -gamma * L0 + nz(L0[1]) + gamma * nz(L1[1])
-L2 = 0.0
 L2 := -gamma * L1 + nz(L1[1]) + gamma * nz(L2[1])
-L3 = 0.0
 L3 := -gamma * L2 + nz(L2[1]) + gamma * nz(L3[1])
-cu = (L0 > L1 ? L0 - L1 : 0) + (L1 > L2 ? L1 - L2 : 0) + (L2 > L3 ? L2 - L3 : 0)
-cd = (L0 < L1 ? L1 - L0 : 0) + (L1 < L2 ? L2 - L1 : 0) + (L2 < L3 ? L3 - L2 : 0)
-temp = cu + cd == 0 ? -1 : cu + cd
-LaRSI = 100 * (temp == -1 ? 0 : cu / temp)
+if L0 >= L1
+    CU1 := L0 - L1
+    CD1 := 0
+else
+    CD1 := L1 - L0
+    CU1 := 0
+
+if L1 >= L2
+    CU2 := CU1 + L1 - L2
+    CD2 := CD1
+else
+    CD2 := CD1 + L2 - L1
+    CU2 := CU1
+
+if L2 >= L3
+    CU := CU2 + L2 - L3
+    CD := CD2
+else
+    CU := CU2
+    CD := CD2 + L3 - L2
+
+lrsife_LaRSI = (CU + CD != 0) ? 100 * (CU / (CU + CD)) : 0
 
 
-plot100 = plot(100, display=display.none)
-plot80 = plot(80, display=display.none)
-plot20 = plot(20, display=display.none)
-plot0 = plot(0, display=display.none)
-fill(plot100, plot80, color.rgb(56,142,60,40))
-fill(plot0, plot20, color.rgb(178,40,51,40))
-plot(LaRSI, title='LaRSI', linewidth=2, color=color.white)
+////////////////////////////////////////////////////////////////////////////////
+// Laguerre RSI Plotting
+////////////////////////////////////////////////////////////////////////////////
+
+LaRSI = (lrsiType == LRSI_Type.LaguerreRSI_FractalEnergy) ? lrsife_LaRSI : lrsi_LaRSI
+plot(LaRSI, title='Laguerre RSI', linewidth=2, color=color.white)
 
 lrsiBuyCond = ta.crossover(LaRSI, 20)
 lrsiSellCond = ta.crossunder(LaRSI, 80)
-//plotshape(lrsiBuyCond ? 0 : na, style = shape.triangleup, location = location.absolute, color = color.yellow, size = size.small)
-//plotshape(lrsiSellCond ? 100 : na, style = shape.triangledown, location = location.absolute, color = color.yellow, size = size.small)
 bgcolor(lrsiBuyCond ? color.new(color.green, 50) : lrsiSellCond ? color.new(color.red, 50) : na)
 
-prevBarTrend = close[1] >= open[1] ? 1 : -1
-currBarTrend = close[0] >= open[0] ? 1 : -1
+plotshape(lrsiBuyCond, style=shape.triangleup, location=location.belowbar, color=color.yellow, size=size.auto, force_overlay=true, display=display.pane)
+plotshape(lrsiSellCond, style=shape.triangledown, location=location.abovebar, color=color.yellow, size=size.auto, force_overlay=true, display=display.pane)
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Trend
+////////////////////////////////////////////////////////////////////////////////
+
+prevBarTrend = haClose[1] >= haOpen[1] ? 1 : -1
+currBarTrend = haClose[0] >= haOpen[0] ? 1 : -1
 trendColor = (currBarTrend == prevBarTrend and currBarTrend > 0) ? color.green : ((currBarTrend == prevBarTrend and currBarTrend < 0) ? color.red : color.yellow)
 plotshape(50, style = shape.circle, location = location.absolute, color = trendColor, size = size.tiny, display = display.pane)
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Helpers
+////////////////////////////////////////////////////////////////////////////////
+
+enum MAType
+    SMA
+    EMA
+
+ma1Enabled = input.bool(false, "Enable MA1", group="MA 1")
+ma1Len = input.int(100, "Length", minval=1, inline="MA1", group="MA 1")
+ma1Type = input.enum(MAType.SMA, "Type", inline="MA1", group="MA 1")
+ma1 = (ma1Type == MAType.EMA) ? ta.ema(realClose, ma1Len) : ta.sma(realClose, ma1Len)
+plot(ma1Enabled ? ma1 : na, "MA1", color.fuchsia, linewidth=2, force_overlay=true)
+
+ma2Enabled = input.bool(false, "Enable MA2", group="MA 2")
+ma2Len = input.int(200, "Length", minval=1, inline="MA2", group="MA 2")
+ma2Type = input.enum(MAType.SMA, "Type", inline="MA2", group="MA 2")
+ma2 = (ma2Type == MAType.EMA) ? ta.ema(realClose, ma2Len) : ta.sma(realClose, ma2Len)
+plot(ma2Enabled ? ma2 : na, "MA2", color.yellow, linewidth=2, force_overlay=true)
+
+vwapEnabled = input.bool(false, "Enable VWAP", group="VWAP")
+vwap = ta.vwap(realClose)
+plot(vwapEnabled ? vwap : na, "VWAP", color.aqua, linewidth=2, force_overlay=true)
 
 
 ////////////////////////////////////////////////////////////////////////////////
 // Alerts
 ////////////////////////////////////////////////////////////////////////////////
 
-alertcondition(lrsiBuyCond, title='LaRSI BUY', message='Laguerre RSI crosses OVER 20 - BUY SIGNAL!')
-alertcondition(lrsiSellCond, title='LaRSI SELL', message='Laguerre RSI crosses UNDER 80 - SELL SIGNAL!')
-
+alertcondition(lrsiBuyCond, title='Enter BUY', message='Laguerre RSI crosses OVER 20 - BUY SIGNAL!')
+alertcondition(lrsiSellCond, title='Enter SELL', message='Laguerre RSI crosses UNDER 80 - SELL SIGNAL!')
