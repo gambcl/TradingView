@@ -1,0 +1,93 @@
+//@version=6
+indicator("Paper Arms + Feet v1.00", overlay=false)
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Heikin-Ashi open/close
+////////////////////////////////////////////////////////////////////////////////
+
+showRealOpen = input.bool(true, "Show Real Open", group="Heikin-Ashi")
+realOpenColor = input.color(color.white, "Real Open Color", group="Heikin-Ashi")
+showRealClose = input.bool(true, "Show Real Close", group="Heikin-Ashi")
+realCloseColor = input.color(color.fuchsia, "Real Close Color", group="Heikin-Ashi")
+
+realPrice = ticker.new(prefix=syminfo.prefix, ticker=syminfo.ticker)
+realOpen = request.security(symbol=realPrice, timeframe='', expression=open, gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+realClose = request.security(symbol=realPrice, timeframe='', expression=close, gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+
+displayRealOpen = showRealOpen ? display.all : display.none
+displayRealClose = showRealClose ? display.all : display.none
+
+plotchar(series=realOpen, title="Real open dots", location=location.absolute, color=realOpenColor, editable=false, char="•", size=size.auto, force_overlay=true, display=displayRealOpen)
+plotchar(series=realClose, title="Real close dots", location=location.absolute, color=realCloseColor, editable=false, char="•", size=size.auto, force_overlay=true, display=displayRealClose)
+
+
+////////////////////////////////////////////////////////////////////////////////
+// EMA Cloud
+////////////////////////////////////////////////////////////////////////////////
+
+emaFastLen = input.int(9, "Fast EMA Length", minval=1, group="EMA Cloud")
+emaSlowLen = input.int(21, "Slow EMA Length", minval=1, group="EMA Cloud")
+emaFast = ta.ema(close, emaFastLen)
+emaSlow = ta.ema(close, emaSlowLen)
+
+emaFastPlot = plot(emaFast, "Fast EMA", color=color.green, linewidth=1, force_overlay=true)
+emaSlowPlot = plot(emaSlow, "Slow EMA", color=color.red, linewidth=1, force_overlay = true)
+emaColor = emaFast >= emaSlow ? color.green : color.red
+fill(emaFastPlot, emaSlowPlot, color.new(emaColor, 40), "EMA Cloud")
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Laguerre RSI
+////////////////////////////////////////////////////////////////////////////////
+
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// Developer: John EHLERS
+// © KivancOzbilgic
+// Author:Kıvanç Özbilgiç
+src = input(title='Source', defval=close, group="Laguerre RSI")
+alpha = input.float(title='Alpha', minval=0, maxval=1, step=0.1, defval=0.2, group="Laguerre RSI")
+
+gamma = 1 - alpha
+L0 = 0.0
+L0 := (1 - gamma) * src + gamma * nz(L0[1])
+L1 = 0.0
+L1 := -gamma * L0 + nz(L0[1]) + gamma * nz(L1[1])
+L2 = 0.0
+L2 := -gamma * L1 + nz(L1[1]) + gamma * nz(L2[1])
+L3 = 0.0
+L3 := -gamma * L2 + nz(L2[1]) + gamma * nz(L3[1])
+cu = (L0 > L1 ? L0 - L1 : 0) + (L1 > L2 ? L1 - L2 : 0) + (L2 > L3 ? L2 - L3 : 0)
+cd = (L0 < L1 ? L1 - L0 : 0) + (L1 < L2 ? L2 - L1 : 0) + (L2 < L3 ? L3 - L2 : 0)
+temp = cu + cd == 0 ? -1 : cu + cd
+LaRSI = 100 * (temp == -1 ? 0 : cu / temp)
+
+
+plot100 = plot(100, display=display.none)
+plot80 = plot(80, display=display.none)
+plot20 = plot(20, display=display.none)
+plot0 = plot(0, display=display.none)
+fill(plot100, plot80, color.rgb(56,142,60,40))
+fill(plot0, plot20, color.rgb(178,40,51,40))
+plot(LaRSI, title='LaRSI', linewidth=2, color=color.white)
+
+lrsiBuyCond = ta.crossover(LaRSI, 20)
+lrsiSellCond = ta.crossunder(LaRSI, 80)
+//plotshape(lrsiBuyCond ? 0 : na, style = shape.triangleup, location = location.absolute, color = color.yellow, size = size.small)
+//plotshape(lrsiSellCond ? 100 : na, style = shape.triangledown, location = location.absolute, color = color.yellow, size = size.small)
+bgcolor(lrsiBuyCond ? color.new(color.green, 50) : lrsiSellCond ? color.new(color.red, 50) : na)
+
+prevBarTrend = close[1] >= open[1] ? 1 : -1
+currBarTrend = close[0] >= open[0] ? 1 : -1
+trendColor = (currBarTrend == prevBarTrend and currBarTrend > 0) ? color.green : ((currBarTrend == prevBarTrend and currBarTrend < 0) ? color.red : color.yellow)
+plotshape(50, style = shape.circle, location = location.absolute, color = trendColor, size = size.tiny, display = display.pane)
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Alerts
+////////////////////////////////////////////////////////////////////////////////
+
+alertcondition(lrsiBuyCond, title='LaRSI BUY', message='Laguerre RSI crosses OVER 20 - BUY SIGNAL!')
+alertcondition(lrsiSellCond, title='LaRSI SELL', message='Laguerre RSI crosses UNDER 80 - SELL SIGNAL!')
+
