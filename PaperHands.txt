@@ -1,5 +1,5 @@
 //@version=6
-indicator("Paper Arms + Feet v1.3", overlay=false)
+indicator("PaperHands v1.4", overlay=false)
 
 enum LRSI_Type
     LaguerreRSI
@@ -56,23 +56,23 @@ fill(emaFastPlot, emaSlowPlot, emaFast >= emaSlow ? color.rgb(76,175,80, 60) : c
 adxlen = input(14, title="ADX Smoothing", group="Trend Strength (ADX)")
 dilen = input(14, title="DI Length", group="Trend Strength (ADX)")
 
-adxMediumTrendThreshold = input.float(14, "Medium Trend Threshold", minval=0, maxval=100, step=0.1, group="Trend Strength (ADX)")
-adxStrongTrendThreshold = input.float(25, "Strong Trend Threshold", minval=0, maxval=100, step=0.1, group="Trend Strength (ADX)")
+adxMediumTrendThreshold = input.float(15, "Medium Trend Threshold", minval=0, maxval=100, step=0.1, group="Trend Strength (ADX)")
+adxStrongTrendThreshold = input.float(23, "Strong Trend Threshold", minval=0, maxval=100, step=0.1, group="Trend Strength (ADX)")
 
 dirmov(len) =>
-	up = ta.change(realHigh)
-	down = -ta.change(realLow)
-	plusDM = na(up) ? na : (up > down and up > 0 ? up : 0)
-	minusDM = na(down) ? na : (down > up and down > 0 ? down : 0)
-	truerange = ta.rma(math.max(realHigh - realLow, math.abs(realHigh - realClose[1]), math.abs(realLow - realClose[1])), len)
-	plus = fixnan(100 * ta.rma(plusDM, len) / truerange)
-	minus = fixnan(100 * ta.rma(minusDM, len) / truerange)
-	[plus, minus]
+    up = ta.change(realHigh)
+    down = -ta.change(realLow)
+    plusDM = na(up) ? na : (up > down and up > 0 ? up : 0)
+    minusDM = na(down) ? na : (down > up and down > 0 ? down : 0)
+    truerange = ta.rma(math.max(realHigh - realLow, math.abs(realHigh - realClose[1]), math.abs(realLow - realClose[1])), len)
+    plus = fixnan(100 * ta.rma(plusDM, len) / truerange)
+    minus = fixnan(100 * ta.rma(minusDM, len) / truerange)
+    [plus, minus]
 
 adx(dilen, adxlen) =>
-	[plus, minus] = dirmov(dilen)
-	sum = plus + minus
-	adx = 100 * ta.rma(math.abs(plus - minus) / (sum == 0 ? 1 : sum), adxlen)
+    [plus, minus] = dirmov(dilen)
+    sum = plus + minus
+    adx = 100 * ta.rma(math.abs(plus - minus) / (sum == 0 ? 1 : sum), adxlen)
 
 adxValue = adx(dilen, adxlen)
 
@@ -85,8 +85,8 @@ plot100 = plot(100, display=display.none, editable=false)
 plot80 = plot(80, display=display.none, editable=false)
 plot20 = plot(20, display=display.none, editable=false)
 plot0 = plot(0, display=display.none, editable=false)
-fill(plot100, plot80, color.rgb(56,142,60,40), "Overbought Region")
-fill(plot0, plot20, color.rgb(178,40,51,40), "Oversold Region")
+fill(plot100, plot80, color.rgb(178,40,51,40), "Overbought Region")
+fill(plot0, plot20, color.rgb(56,142,60,40), "Oversold Region")
 
 
 ////////////////////////////////////////////////////////////////////////////////
