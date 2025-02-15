@@ -1,0 +1,38 @@
+//@version=6
+indicator("ADX Dots", overlay=false)
+
+realPrice = ticker.new(prefix=syminfo.prefix, ticker=syminfo.ticker)
+[realOpen, realHigh, realLow, realClose] = request.security(realPrice, timeframe.period, [open, high, low, close])
+
+
+////////////////////////////////////////////////////////////////////////////////
+// ADX
+////////////////////////////////////////////////////////////////////////////////
+
+adxlen = input(14, title="ADX Smoothing")
+dilen = input(14, title="DI Length")
+
+adxMediumTrendThreshold = input.float(15, "Medium Trend Threshold", minval=0, maxval=100, step=0.1)
+adxStrongTrendThreshold = input.float(23, "Strong Trend Threshold", minval=0, maxval=100, step=0.1)
+trendStrengthPos = input.int(50, "Display Level")
+
+dirmov(len) =>
+    up = ta.change(realHigh)
+    down = -ta.change(realLow)
+    plusDM = na(up) ? na : (up > down and up > 0 ? up : 0)
+    minusDM = na(down) ? na : (down > up and down > 0 ? down : 0)
+    truerange = ta.rma(math.max(realHigh - realLow, math.abs(realHigh - realClose[1]), math.abs(realLow - realClose[1])), len)
+    plus = fixnan(100 * ta.rma(plusDM, len) / truerange)
+    minus = fixnan(100 * ta.rma(minusDM, len) / truerange)
+    [plus, minus]
+
+adx(dilen, adxlen) =>
+    [plus, minus] = dirmov(dilen)
+    sum = plus + minus
+    adx = 100 * ta.rma(math.abs(plus - minus) / (sum == 0 ? 1 : sum), adxlen)
+
+adxValue = adx(dilen, adxlen)
+
+trendStrengthColor = (adxValue > adxStrongTrendThreshold) ? #7b1fa2 : (adxValue > adxMediumTrendThreshold) ? #ba68c8 : #e1bee7
+plotshape(trendStrengthPos, title="ADX Dots", style = shape.circle, location = location.absolute, color = trendStrengthColor, size = size.tiny, display = display.pane)
+plot(adxValue, title="ADX", color=color.fuchsia, display=display.status_line)

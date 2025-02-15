@@ -1,0 +1,146 @@
+//@version=6
+indicator("Laguerre RSI", overlay=false)
+
+enum LRSI_Type
+    LaguerreRSI
+    LaguerreRSI_FractalEnergy
+
+lrsiType = input.enum(LRSI_Type.LaguerreRSI_FractalEnergy, "LaguerreRSI Type")
+
+
+realPrice = ticker.new(prefix=syminfo.prefix, ticker=syminfo.ticker)
+[realOpen, realHigh, realLow, realClose] = request.security(realPrice, timeframe.period, [open, high, low, close])
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Oscillator Regions
+////////////////////////////////////////////////////////////////////////////////
+
+plot100 = plot(100, display=display.none, editable=false)
+plot80 = plot(80, display=display.none, editable=false)
+plot20 = plot(20, display=display.none, editable=false)
+plot0 = plot(0, display=display.none, editable=false)
+fill(plot100, plot80, color.rgb(178,40,51,40), "Overbought Region")
+fill(plot0, plot20, color.rgb(56,142,60,40), "Oversold Region")
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Laguerre RSI
+////////////////////////////////////////////////////////////////////////////////
+
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// Developer: John EHLERS
+// © KivancOzbilgic
+// Author:Kıvanç Özbilgiç
+lrsi_alpha = input.float(title='Alpha', minval=0, maxval=1, step=0.1, defval=0.2, group="Laguerre RSI")
+
+lrsi_gamma = 1 - lrsi_alpha
+lrsi_L0 = 0.0
+lrsi_L0 := (1 - lrsi_gamma) * realClose + lrsi_gamma * nz(lrsi_L0[1])
+lrsi_L1 = 0.0
+lrsi_L1 := -lrsi_gamma * lrsi_L0 + nz(lrsi_L0[1]) + lrsi_gamma * nz(lrsi_L1[1])
+lrsi_L2 = 0.0
+lrsi_L2 := -lrsi_gamma * lrsi_L1 + nz(lrsi_L1[1]) + lrsi_gamma * nz(lrsi_L2[1])
+lrsi_L3 = 0.0
+lrsi_L3 := -lrsi_gamma * lrsi_L2 + nz(lrsi_L2[1]) + lrsi_gamma * nz(lrsi_L3[1])
+lrsi_cu = (lrsi_L0 > lrsi_L1 ? lrsi_L0 - lrsi_L1 : 0) + (lrsi_L1 > lrsi_L2 ? lrsi_L1 - lrsi_L2 : 0) + (lrsi_L2 > lrsi_L3 ? lrsi_L2 - lrsi_L3 : 0)
+lrsi_cd = (lrsi_L0 < lrsi_L1 ? lrsi_L1 - lrsi_L0 : 0) + (lrsi_L1 < lrsi_L2 ? lrsi_L2 - lrsi_L1 : 0) + (lrsi_L2 < lrsi_L3 ? lrsi_L3 - lrsi_L2 : 0)
+lrsi_temp = lrsi_cu + lrsi_cd == 0 ? -1 : lrsi_cu + lrsi_cd
+lrsi_LaRSI = 100 * (lrsi_temp == -1 ? 0 : lrsi_cu / lrsi_temp)
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Laguerre RSI with Fractal Energy
+// https://usethinkscript.com/threads/rsi-laguerre-with-fractal-energy-for-thinkorswim.116/
+////////////////////////////////////////////////////////////////////////////////
+
+nFE = input.int(title="NFE", tooltip="Number of bars used in Fractal Efficiency calculations", minval=1, defval=8, group="Laguerre RSI with Fractal Energy")
+Glength = input.int(title="GLength", tooltip="Period length for Go/Gh/Gl/Gc filter", minval=1, defval=13, group="Laguerre RSI with Fractal Energy")
+betaDev = input.int(title="BetaDev", tooltip="Controls reactivity in alpha/beta computations", minval=1, defval=8, group="Laguerre RSI with Fractal Energy")
+
+float w = (2.0 * math.pi / Glength)
+float beta = (1 - math.cos(w)) / (math.pow(1.414, 2.0 / betaDev) - 1)
+float alpha = (-beta + math.sqrt(beta * beta + 2 * beta))
+float Go = na
+float Gh = na
+float Gl = na
+float Gc = na
+Go := math.pow(alpha, 4) * realOpen + 4 * (1.0 - alpha) * nz(Go[1]) - 6 * math.pow( 1 - alpha, 2) * nz(Go[2]) + 4 * math.pow( 1 - alpha, 3) * nz(Go[3]) - math.pow( 1 - alpha, 4 ) * nz(Go[4])
+Gh := math.pow(alpha, 4) * realHigh + 4 * (1.0 - alpha) * nz(Gh[1]) - 6 * math.pow( 1 - alpha, 2 ) * nz(Gh[2]) + 4 * math.pow( 1 - alpha, 3 ) * nz(Gh[3]) - math.pow( 1 - alpha, 4 ) * nz(Gh[4])
+Gl := math.pow(alpha, 4) * realLow + 4 * (1.0 - alpha) * nz(Gl[1]) - 6 * math.pow( 1 - alpha, 2 ) * nz(Gl[2]) + 4 * math.pow( 1 - alpha, 3 ) * nz(Gl[3]) - math.pow( 1 - alpha, 4 ) * nz(Gl[4])
+Gc := math.pow(alpha, 4) * realClose + 4 * (1.0 - alpha) * nz(Gc[1]) - 6 * math.pow( 1 - alpha, 2 ) * nz(Gc[2]) + 4 * math.pow( 1 - alpha, 3 ) * nz(Gc[3]) - math.pow( 1 - alpha, 4 ) * nz(Gc[4])
+// Variables:
+float o = na
+float h = na
+float l = na
+float c = na
+float CU1 = na
+float CU2 = na
+float CU = na
+float CD1 = na
+float CD2 = na
+float CD = na
+float L0 = na
+float L1 = na
+float L2 = na
+float L3 = na
+
+// Calculations
+o := (Go + nz(Gc[1])) / 2.0
+h := math.max(Gh, nz(Gc[1]))
+l := math.min(Gl, nz(Gc[1]))
+c := (o + h + l + Gc) / 4.0
+gamma = math.log(math.sum((math.max(Gh, nz(Gc[1])) - math.min(Gl, nz(Gc[1]))), nFE) / (ta.highest(Gh, nFE) - ta.lowest(Gl, nFE))) / math.log(nFE)
+L0 := (1.0 - gamma) * Gc + gamma * nz(L0[1])
+L1 := -gamma * L0 + nz(L0[1]) + gamma * nz(L1[1])
+L2 := -gamma * L1 + nz(L1[1]) + gamma * nz(L2[1])
+L3 := -gamma * L2 + nz(L2[1]) + gamma * nz(L3[1])
+if L0 >= L1
+    CU1 := L0 - L1
+    CD1 := 0
+else
+    CD1 := L1 - L0
+    CU1 := 0
+
+if L1 >= L2
+    CU2 := CU1 + L1 - L2
+    CD2 := CD1
+else
+    CD2 := CD1 + L2 - L1
+    CU2 := CU1
+
+if L2 >= L3
+    CU := CU2 + L2 - L3
+    CD := CD2
+else
+    CU := CU2
+    CD := CD2 + L3 - L2
+
+lrsife_LaRSI = (CU + CD != 0) ? 100 * (CU / (CU + CD)) : 0
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Laguerre RSI Plotting
+////////////////////////////////////////////////////////////////////////////////
+
+LaRSI = (lrsiType == LRSI_Type.LaguerreRSI_FractalEnergy) ? lrsife_LaRSI : lrsi_LaRSI
+plot(LaRSI, title='Laguerre RSI', linewidth=2, color=color.white)
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Alerts
+////////////////////////////////////////////////////////////////////////////////
+
+// Enter long - LRSI
+enterLongLRSI = ta.crossover(LaRSI, 20)
+plotshape(enterLongLRSI, title="Enter LONG - LRSI", style=shape.arrowup, location=location.belowbar, color=color.green, size=size.normal, force_overlay=true, display=display.pane)
+alertcondition(enterLongLRSI, title='Enter LONG - LRSI', message='Laguerre RSI crossed OVER 20')
+
+
+// Enter short - LRSI
+enterShortLRSI = ta.crossunder(LaRSI, 80)
+plotshape(enterShortLRSI, title="Enter SHORT - LRSI", style=shape.arrowdown, location=location.abovebar, color=color.red, size=size.normal, force_overlay=true, display=display.pane)
+alertcondition(enterShortLRSI, title='Enter SHORT - LRSI', message='Laguerre RSI crossed UNDER 80')
+
+
+bgcolor(enterLongLRSI ? color.new(color.green, 50) : enterShortLRSI ? color.new(color.red, 50) : na, title="LRSI Entry Signal Background")

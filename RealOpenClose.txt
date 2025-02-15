@@ -1,0 +1,16 @@
+//@version=6
+indicator("RealOpenClose", overlay=true)
+
+showRealOpen = input.bool(true, "Show Real Open")
+realOpenColor = input.color(color.white, "Real Open Color")
+showRealClose = input.bool(true, "Show Real Close")
+realCloseColor = input.color(color.fuchsia, "Real Close Color")
+
+realPrice = ticker.new(prefix=syminfo.prefix, ticker=syminfo.ticker)
+[realOpen, realHigh, realLow, realClose] = request.security(realPrice, timeframe.period, [open, high, low, close])
+
+displayRealOpen = showRealOpen ? display.all : display.none
+displayRealClose = showRealClose ? display.all : display.none
+
+plotchar(series=chart.is_heikinashi ? realOpen : na, title="Real Open Dots", location=location.absolute, color=realOpenColor, editable=false, char="•", size=size.auto, force_overlay=true, display=displayRealOpen)
+plotchar(series=chart.is_heikinashi ? realClose : na, title="Real Close Dots", location=location.absolute, color=realCloseColor, editable=false, char="•", size=size.auto, force_overlay=true, display=displayRealClose)

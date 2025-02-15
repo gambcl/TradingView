@@ -1,0 +1,16 @@
+//@version=6
+indicator("Heikin Ashi Dots", overlay=false)
+
+trendDirectionPos = input.int(50, "Display Level")
+
+////////////////////////////////////////////////////////////////////////////////
+// Heikin Ashi
+////////////////////////////////////////////////////////////////////////////////
+
+haTicker = ticker.heikinashi(syminfo.tickerid)
+[haOpen, haHigh, haLow, haClose] = request.security(haTicker, timeframe.period, [open, high, low, close])
+
+prevBarTrend = haClose[1] >= haOpen[1] ? 1 : -1
+currBarTrend = haClose[0] >= haOpen[0] ? 1 : -1
+trendDirectionColor = (currBarTrend == prevBarTrend and currBarTrend > 0) ? color.green : ((currBarTrend == prevBarTrend and currBarTrend < 0) ? color.red : color.yellow)
+plotshape(trendDirectionPos, title="Heikin Ashi Dots", style = shape.circle, location = location.absolute, color = trendDirectionColor, size = size.tiny, display = display.pane)

@@ -1,0 +1,30 @@
+//@version=6
+indicator("EMA Cloud", overlay=true)
+
+////////////////////////////////////////////////////////////////////////////////
+// EMA Cloud
+////////////////////////////////////////////////////////////////////////////////
+
+emaFastLen = input.int(9, "Fast EMA Length", minval=1)
+emaSlowLen = input.int(21, "Slow EMA Length", minval=1)
+emaFast = ta.ema(close, emaFastLen)
+emaSlow = ta.ema(close, emaSlowLen)
+
+emaFastPlot = plot(emaFast, "Fast EMA", color=color.green, linewidth=2, force_overlay=true)
+emaSlowPlot = plot(emaSlow, "Slow EMA", color=color.red, linewidth=2, force_overlay = true)
+fill(emaFastPlot, emaSlowPlot, emaFast >= emaSlow ? color.rgb(76,175,80, 60) : color.rgb(255, 82, 82, 60), "EMA Cloud")
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Alerts
+////////////////////////////////////////////////////////////////////////////////
+
+// Bullish Crossover
+bullishCross = ta.crossover(emaFast, emaSlow)
+plotshape(bullishCross, title="Bullish Cross", style=shape.arrowup, location=location.belowbar, color=color.green, size=size.normal, force_overlay=true, display=display.pane)
+alertcondition(bullishCross, title='Bullish Cross')
+
+// Bearish Cross
+bearishCross = ta.crossunder(emaFast, emaSlow)
+plotshape(bearishCross, title="Bearish Cross", style=shape.arrowdown, location=location.abovebar, color=color.red, size=size.normal, force_overlay=true, display=display.pane)
+alertcondition(bearishCross, title='Bearish Cross')
