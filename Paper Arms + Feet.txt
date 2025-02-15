@@ -1,11 +1,14 @@
 //@version=6
-indicator("Paper Arms + Feet v1.2", overlay=false)
+indicator("Paper Arms + Feet v1.3", overlay=false)
 
 enum LRSI_Type
     LaguerreRSI
     LaguerreRSI_FractalEnergy
 
 lrsiType = input.enum(LRSI_Type.LaguerreRSI_FractalEnergy, "LaguerreRSI Type")
+
+showTrendDirectionDots = input.bool(true, "Show Trend Direction")
+showTrendStrengthDots = input.bool(true, "Show Trend Strength")
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -41,9 +44,37 @@ emaFast = ta.ema(close, emaFastLen)
 emaSlow = ta.ema(close, emaSlowLen)
 
 var displayEMACloud = showEMACloud ? display.all : display.none
-emaFastPlot = plot(emaFast, "Fast EMA", color=color.green, linewidth=1, force_overlay=true, display=displayEMACloud)
-emaSlowPlot = plot(emaSlow, "Slow EMA", color=color.red, linewidth=1, force_overlay = true, display=displayEMACloud)
-fill(emaFastPlot, emaSlowPlot, emaFast >= emaSlow ? color.rgb(76,175,80, 40) : color.rgb(255, 82, 82, 40), "EMA Cloud", display=displayEMACloud)
+emaFastPlot = plot(emaFast, "Fast EMA", color=color.green, linewidth=2, force_overlay=true, display=displayEMACloud)
+emaSlowPlot = plot(emaSlow, "Slow EMA", color=color.red, linewidth=2, force_overlay = true, display=displayEMACloud)
+fill(emaFastPlot, emaSlowPlot, emaFast >= emaSlow ? color.rgb(76,175,80, 60) : color.rgb(255, 82, 82, 60), "EMA Cloud", display=displayEMACloud)
+
+
+////////////////////////////////////////////////////////////////////////////////
+// ADX
+////////////////////////////////////////////////////////////////////////////////
+
+adxlen = input(14, title="ADX Smoothing", group="Trend Strength (ADX)")
+dilen = input(14, title="DI Length", group="Trend Strength (ADX)")
+
+adxMediumTrendThreshold = input.float(14, "Medium Trend Threshold", minval=0, maxval=100, step=0.1, group="Trend Strength (ADX)")
+adxStrongTrendThreshold = input.float(25, "Strong Trend Threshold", minval=0, maxval=100, step=0.1, group="Trend Strength (ADX)")
+
+dirmov(len) =>
+	up = ta.change(realHigh)
+	down = -ta.change(realLow)
+	plusDM = na(up) ? na : (up > down and up > 0 ? up : 0)
+	minusDM = na(down) ? na : (down > up and down > 0 ? down : 0)
+	truerange = ta.rma(math.max(realHigh - realLow, math.abs(realHigh - realClose[1]), math.abs(realLow - realClose[1])), len)
+	plus = fixnan(100 * ta.rma(plusDM, len) / truerange)
+	minus = fixnan(100 * ta.rma(minusDM, len) / truerange)
+	[plus, minus]
+
+adx(dilen, adxlen) =>
+	[plus, minus] = dirmov(dilen)
+	sum = plus + minus
+	adx = 100 * ta.rma(math.abs(plus - minus) / (sum == 0 ? 1 : sum), adxlen)
+
+adxValue = adx(dilen, adxlen)
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -167,8 +198,14 @@ plot(LaRSI, title='Laguerre RSI', linewidth=2, color=color.white)
 
 prevBarTrend = haClose[1] >= haOpen[1] ? 1 : -1
 currBarTrend = haClose[0] >= haOpen[0] ? 1 : -1
-trendColor = (currBarTrend == prevBarTrend and currBarTrend > 0) ? color.green : ((currBarTrend == prevBarTrend and currBarTrend < 0) ? color.red : color.yellow)
-plotshape(50, title="Trend Dots", style = shape.circle, location = location.absolute, color = trendColor, size = size.tiny, display = display.pane)
+trendDirectionColor = (currBarTrend == prevBarTrend and currBarTrend > 0) ? color.green : ((currBarTrend == prevBarTrend and currBarTrend < 0) ? color.red : color.yellow)
+trendDirectionPos = showTrendDirectionDots and showTrendStrengthDots ? 60 : 50
+plotshape(showTrendDirectionDots ? trendDirectionPos : na, title="Trend Direction Dots", style = shape.circle, location = location.absolute, color = trendDirectionColor, size = size.tiny, display = display.pane)
+
+trendStrengthColor = (adxValue > adxStrongTrendThreshold) ? #7b1fa2 : (adxValue > adxMediumTrendThreshold) ? #ba68c8 : #e1bee7
+trendStrengthPos = showTrendDirectionDots and showTrendStrengthDots ? 40 : 50
+plotshape(showTrendStrengthDots ? trendStrengthPos : na, title="Trend Strength Dots", style = shape.circle, location = location.absolute, color = trendStrengthColor, size = size.tiny, display = display.pane)
+plot(adxValue, title="ADX", color=color.fuchsia, display=display.status_line)
 
 
 ////////////////////////////////////////////////////////////////////////////////
