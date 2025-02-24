@@ -1,5 +1,5 @@
 //@version=6
-indicator("PaperHands v1.4", overlay=false)
+indicator("PaperHands v1.5", overlay=false, explicit_plot_zorder=true)
 
 enum LRSI_Type
     LaguerreRSI
@@ -7,8 +7,9 @@ enum LRSI_Type
 
 lrsiType = input.enum(LRSI_Type.LaguerreRSI_FractalEnergy, "LaguerreRSI Type")
 
-showTrendDirectionDots = input.bool(true, "Show Trend Direction")
-showTrendStrengthDots = input.bool(true, "Show Trend Strength")
+showHATrendDirectionDots = input.bool(true, "Show Heikin-Ashi Trend Direction Dots")
+showEMACloudTrendDirectionDots = input.bool(true, "Show EMA Cloud Trend Direction Dots")
+showADXTrendStrengthDots = input.bool(true, "Show ADX Trend Strength Dots")
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -44,8 +45,8 @@ emaFast = ta.ema(close, emaFastLen)
 emaSlow = ta.ema(close, emaSlowLen)
 
 var displayEMACloud = showEMACloud ? display.all : display.none
-emaFastPlot = plot(emaFast, "Fast EMA", color=color.green, linewidth=2, force_overlay=true, display=displayEMACloud)
-emaSlowPlot = plot(emaSlow, "Slow EMA", color=color.red, linewidth=2, force_overlay = true, display=displayEMACloud)
+emaFastPlot = plot(emaFast, "Fast EMA", color=color.green, linewidth=2, force_overlay=true, display=display.none)
+emaSlowPlot = plot(emaSlow, "Slow EMA", color=color.red, linewidth=2, force_overlay = true, display=display.none)
 fill(emaFastPlot, emaSlowPlot, emaFast >= emaSlow ? color.rgb(76,175,80, 60) : color.rgb(255, 82, 82, 60), "EMA Cloud", display=displayEMACloud)
 
 
@@ -85,8 +86,8 @@ plot100 = plot(100, display=display.none, editable=false)
 plot80 = plot(80, display=display.none, editable=false)
 plot20 = plot(20, display=display.none, editable=false)
 plot0 = plot(0, display=display.none, editable=false)
-fill(plot100, plot80, color.rgb(178,40,51,40), "Overbought Region")
-fill(plot0, plot20, color.rgb(56,142,60,40), "Oversold Region")
+fill(plot100, plot80, color.rgb(178,40,51,60), "Overbought Region")
+fill(plot0, plot20, color.rgb(56,142,60,60), "Oversold Region")
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -185,6 +186,29 @@ lrsife_LaRSI = (CU + CD != 0) ? 100 * (CU / (CU + CD)) : 0
 
 
 ////////////////////////////////////////////////////////////////////////////////
+// Trend
+////////////////////////////////////////////////////////////////////////////////
+
+// HA Dots
+prevBarTrend = haClose[1] >= haOpen[1] ? 1 : -1
+currBarTrend = haClose[0] >= haOpen[0] ? 1 : -1
+haTrendDirectionColor = (currBarTrend == prevBarTrend and currBarTrend > 0) ? color.green : ((currBarTrend == prevBarTrend and currBarTrend < 0) ? color.red : color.yellow)
+haTrendDirectionPos = (showEMACloudTrendDirectionDots and showADXTrendStrengthDots) ? 65 : ((showEMACloudTrendDirectionDots or showADXTrendStrengthDots) ? 60 : 50)
+plotshape(showHATrendDirectionDots ? haTrendDirectionPos : na, title="Heikin-Ashi Trend Direction Dots", style = shape.circle, location = location.absolute, color = haTrendDirectionColor, size = size.tiny, display = display.pane)
+
+// EMA Cloud Dots
+emaCloudTrendDirectionColor = (emaFast > emaSlow) ? color.green : ((emaFast < emaSlow) ? color.red : na)
+emaCloudTrendDirectionPos = (showHATrendDirectionDots and not showADXTrendStrengthDots) ? 40 : ((not showHATrendDirectionDots and showADXTrendStrengthDots) ? 60 : 50)
+plotshape(showEMACloudTrendDirectionDots ? emaCloudTrendDirectionPos : na, title="EMA Cloud Trend Direction Dots", style = shape.circle, location = location.absolute, color = emaCloudTrendDirectionColor, size = size.tiny, display = display.pane)
+
+// ADX Dots
+adxTrendStrengthColor = (adxValue > adxStrongTrendThreshold) ? #7b1fa2 : (adxValue > adxMediumTrendThreshold) ? #ba68c8 : #e1bee7
+adxTrendStrengthPos = (showHATrendDirectionDots and showEMACloudTrendDirectionDots) ? 35 : ((showHATrendDirectionDots or showEMACloudTrendDirectionDots) ? 40 : 50)
+plotshape(showADXTrendStrengthDots ? adxTrendStrengthPos : na, title="ADX Trend Strength Dots", style = shape.circle, location = location.absolute, color = adxTrendStrengthColor, size = size.tiny, display = display.pane)
+plot(adxValue, title="ADX", color=color.fuchsia, display=display.status_line)
+
+
+////////////////////////////////////////////////////////////////////////////////
 // Laguerre RSI Plotting
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -193,32 +217,16 @@ plot(LaRSI, title='Laguerre RSI', linewidth=2, color=color.white)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// Trend
-////////////////////////////////////////////////////////////////////////////////
-
-prevBarTrend = haClose[1] >= haOpen[1] ? 1 : -1
-currBarTrend = haClose[0] >= haOpen[0] ? 1 : -1
-trendDirectionColor = (currBarTrend == prevBarTrend and currBarTrend > 0) ? color.green : ((currBarTrend == prevBarTrend and currBarTrend < 0) ? color.red : color.yellow)
-trendDirectionPos = showTrendDirectionDots and showTrendStrengthDots ? 60 : 50
-plotshape(showTrendDirectionDots ? trendDirectionPos : na, title="Trend Direction Dots", style = shape.circle, location = location.absolute, color = trendDirectionColor, size = size.tiny, display = display.pane)
-
-trendStrengthColor = (adxValue > adxStrongTrendThreshold) ? #7b1fa2 : (adxValue > adxMediumTrendThreshold) ? #ba68c8 : #e1bee7
-trendStrengthPos = showTrendDirectionDots and showTrendStrengthDots ? 40 : 50
-plotshape(showTrendStrengthDots ? trendStrengthPos : na, title="Trend Strength Dots", style = shape.circle, location = location.absolute, color = trendStrengthColor, size = size.tiny, display = display.pane)
-plot(adxValue, title="ADX", color=color.fuchsia, display=display.status_line)
-
-
-////////////////////////////////////////////////////////////////////////////////
 // Alerts
 ////////////////////////////////////////////////////////////////////////////////
 
 // Enter long - LRSI
 enterLongLRSI = ta.crossover(LaRSI, 20)
-plotshape(enterLongLRSI, title="Enter LONG - LRSI", style=shape.arrowup, location=location.belowbar, color=color.green, size=size.normal, force_overlay=true, display=display.pane)
+plotshape(enterLongLRSI, title="Enter LONG - LRSI", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small, force_overlay=true, display=display.pane)
 alertcondition(enterLongLRSI, title='Enter LONG - LRSI', message='Laguerre RSI crossed OVER 20')
 // Re-enter long - Return to same color trend dot
-reenterLongSameTrendDot = (emaFast > emaSlow) and (currBarTrend == 1) and (currBarTrend[1] == 1) and (currBarTrend[1] != prevBarTrend[1])
-plotshape(reenterLongSameTrendDot, title="Re-enter LONG - Same Trend Dot", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.auto, force_overlay=true, display=display.pane)
+reenterLongSameTrendDot = (LaRSI > 50) and (currBarTrend == 1) and (currBarTrend[1] == 1) and (currBarTrend[1] != prevBarTrend[1])
+plotshape(reenterLongSameTrendDot, title="Re-enter LONG - Same Trend Dot", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small, force_overlay=true, display=display.pane)
 alertcondition(reenterLongSameTrendDot, title='Re-enter LONG - Same Trend Dot', message='Trend returning to bullish')
 // Any enter long
 anyEnterLong = enterLongLRSI or reenterLongSameTrendDot
@@ -227,11 +235,11 @@ alertcondition(anyEnterLong, title='Enter LONG - Any')
 
 // Enter short - LRSI
 enterShortLRSI = ta.crossunder(LaRSI, 80)
-plotshape(enterShortLRSI, title="Enter SHORT - LRSI", style=shape.arrowdown, location=location.abovebar, color=color.red, size=size.normal, force_overlay=true, display=display.pane)
+plotshape(enterShortLRSI, title="Enter SHORT - LRSI", style=shape.triangledown, location=location.abovebar, color=color.red, size=size.small, force_overlay=true, display=display.pane)
 alertcondition(enterShortLRSI, title='Enter SHORT - LRSI', message='Laguerre RSI crossed UNDER 80')
 // Re-enter short - Return to same color trend dot
-reenterShortSameTrendDot = (emaFast < emaSlow) and (currBarTrend == -1) and (currBarTrend[1] == -1) and (currBarTrend[1] != prevBarTrend[1])
-plotshape(reenterShortSameTrendDot, title="Re-enter SHORT - Same Trend Dot", style=shape.triangledown, location=location.abovebar, color=color.red, size=size.auto, force_overlay=true, display=display.pane)
+reenterShortSameTrendDot = (LaRSI < 50) and (currBarTrend == -1) and (currBarTrend[1] == -1) and (currBarTrend[1] != prevBarTrend[1])
+plotshape(reenterShortSameTrendDot, title="Re-enter SHORT - Same Trend Dot", style=shape.triangledown, location=location.abovebar, color=color.red, size=size.small, force_overlay=true, display=display.pane)
 alertcondition(reenterShortSameTrendDot, title='Re-enter SHORT - Same Trend Dot', message='Trend returning to bearish')
 // Any enter short
 anyEnterShort = enterShortLRSI or reenterShortSameTrendDot
