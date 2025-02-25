@@ -1,0 +1,16 @@
+//@version=6
+indicator("EMA Cloud Dots", overlay=false)
+
+////////////////////////////////////////////////////////////////////////////////
+// EMA Cloud
+////////////////////////////////////////////////////////////////////////////////
+
+emaFastLen = input.int(9, "Fast EMA Length", minval=1)
+emaSlowLen = input.int(21, "Slow EMA Length", minval=1)
+emaCloudTrendDirectionPos = input.int(50, "Display Level")
+
+emaFast = ta.ema(close, emaFastLen)
+emaSlow = ta.ema(close, emaSlowLen)
+
+emaCloudTrendDirectionColor = (emaFast > emaSlow) ? color.green : (emaFast < emaSlow) ? color.red : na
+plotshape(emaCloudTrendDirectionPos, title="EMA Cloud Dots", style=shape.circle, location=location.absolute, color=emaCloudTrendDirectionColor, size=size.tiny, display=display.pane)
