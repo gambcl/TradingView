@@ -34,7 +34,7 @@ adx(dilen, adxlen) =>
 
 adxValue = adx(dilen, adxlen)
 
-trendStrengthColor = (adxValue > adxStrongTrendThreshold) ? #7b1fa2 : (adxValue > adxMediumTrendThreshold) ? #ba68c8 : #e1bee7
+trendStrengthColor = (adxValue >= adxStrongTrendThreshold) ? #7b1fa2 : (adxValue >= adxMediumTrendThreshold) ? #ba68c8 : #e1bee7
 plotshape(trendStrengthPos, title="ADX Dots", style = shape.circle, location = location.absolute, color = trendStrengthColor, size = size.tiny, display = display.pane)
 plot(adxValue, title="ADX", color=color.fuchsia, display=display.status_line)
 
