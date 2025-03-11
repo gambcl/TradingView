@@ -1,0 +1,29 @@
+//@version=6
+indicator("Volume Delta Dots", overlay=false)
+
+import TradingView/ta/8
+
+volDeltaPos = input.int(50, "Display Level")
+showLabel = input.bool(true, "Show Label")
+
+////////////////////////////////////////////////////////////////////////////////
+// Volume Delta
+////////////////////////////////////////////////////////////////////////////////
+
+var lowerTimeframe = switch
+    timeframe.isseconds     => "1S"
+    timeframe.isintraday    => "1"
+    timeframe.isdaily       => "5"
+    => "60"
+[volUp, volDown, volDelta] = ta.requestUpAndDownVolume(lowerTimeframe)
+var cumVol = 0.
+cumVol += nz(volume)
+if barstate.islast and cumVol == 0
+    runtime.error("VolumeDeltaDots: The data vendor doesn't provide volume data for this symbol.")
+volDeltaColor = volDelta >= 0 ? color.green : color.red
+plotshape(volDeltaPos, title="Volume Delta Dots", style=shape.circle, location=location.absolute, color=volDeltaColor, size=size.tiny, display=display.pane)
+plot(volDelta, "Volume Delta", color=volDeltaColor, display=display.status_line)
+
+if (showLabel and barstate.islast)
+    var label lblVolDeltaDots = label.new(na, volDeltaPos, "Volume Delta", xloc.bar_index, yloc.price, color.new(color.black, 100), label.style_label_left, color.rgb(150, 150, 150), size.small, text.align_left, tooltip="Volume Delta")
+    label.set_x(lblVolDeltaDots, bar_index + 1)
