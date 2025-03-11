@@ -104,8 +104,8 @@ Glength = input.int(title="GLength", tooltip="Period length for Go/Gh/Gl/Gc filt
 betaDev = input.int(title="BetaDev", tooltip="Controls reactivity in alpha/beta computations", minval=1, defval=8, group="Oscillator - Laguerre RSI with Fractal Energy")
 
 
-dilen = input(14, title="DI Length", tooltip="Length used for calculating the Directional Index", group="Oscillator - ADX Trend Strength")
-adxlen = input(14, title="ADX Smoothing", tooltip="Length used for smoothing the Directional Index", group="Oscillator - ADX Trend Strength")
+dilen = input.int(14, title="DI Length", minval=1, tooltip="Length used for calculating the Directional Index", group="Oscillator - ADX Trend Strength")
+adxlen = input.int(14, title="ADX Smoothing", minval=1, tooltip="Length used for smoothing the Directional Index", group="Oscillator - ADX Trend Strength")
 adxMediumTrendThreshold = input.float(15, "Medium Trend Threshold", minval=0, maxval=100, step=0.1, tooltip="Minimum ADX value for a medium-strength trend.", group="Oscillator - ADX Trend Strength")
 adxStrongTrendThreshold = input.float(23, "Strong Trend Threshold", minval=0, maxval=100, step=0.1, tooltip="Minimum ADX value for a strong trend.", group="Oscillator - ADX Trend Strength")
 
@@ -284,7 +284,7 @@ emaCloudTrendDirectionColor = (emaFast > emaSlow) ? color.green : ((emaFast < em
 emaCloudTrendDirectionPos = overboughtLevel - ((1 + (showHATrendDirectionDots ? 1 : 0)) * marginDotRows)
 plotshape(showEMACloudTrendDirectionDots ? emaCloudTrendDirectionPos : na, title="EMA Cloud Trend Direction Dots", style = shape.circle, location = location.absolute, color = emaCloudTrendDirectionColor, size = size.tiny, display = display.pane)
 
-// VolumeDelta Dots
+// Volume Delta Dots
 var lowerTimeframe = switch
     timeframe.isseconds     => "1S"
     timeframe.isintraday    => "1"
@@ -298,7 +298,7 @@ if barstate.islast and cumVol == 0
 volDeltaColor = volDelta >= 0 ? color.green : color.red
 volDeltaPos = overboughtLevel - ((1 + (showHATrendDirectionDots ? 1 : 0) + (showEMACloudTrendDirectionDots ? 1 : 0)) * marginDotRows)
 plotshape(showVolDeltaDots ? volDeltaPos : na, title="Volume Delta Dots", style = shape.circle, location = location.absolute, color = volDeltaColor, size = size.tiny, display = display.pane)
-plot(volDelta, "VolumeDelta", color=volDeltaColor, display = display.status_line)
+plot(volDelta, "Volume Delta", color=volDeltaColor, display=display.status_line)
 
 // ADX Dots
 adxTrendStrengthColor = (adxValue >= adxStrongTrendThreshold) ? #7b1fa2 : (adxValue >= adxMediumTrendThreshold) ? #ba68c8 : #e1bee7
