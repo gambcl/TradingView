@@ -9,12 +9,13 @@ realPrice = ticker.new(prefix=syminfo.prefix, ticker=syminfo.ticker)
 // ADX
 ////////////////////////////////////////////////////////////////////////////////
 
-adxlen = input(14, title="ADX Smoothing")
-dilen = input(14, title="DI Length")
+adxlen = input.int(14, title="ADX Smoothing", minval=1)
+dilen = input.int(14, title="DI Length", minval=1)
 
 adxMediumTrendThreshold = input.float(15, "Medium Trend Threshold", minval=0, maxval=100, step=0.1)
 adxStrongTrendThreshold = input.float(23, "Strong Trend Threshold", minval=0, maxval=100, step=0.1)
 trendStrengthPos = input.int(50, "Display Level")
+showLabel = input.bool(true, "Show Label")
 
 dirmov(len) =>
     up = ta.change(realHigh)
@@ -36,3 +37,7 @@ adxValue = adx(dilen, adxlen)
 trendStrengthColor = (adxValue > adxStrongTrendThreshold) ? #7b1fa2 : (adxValue > adxMediumTrendThreshold) ? #ba68c8 : #e1bee7
 plotshape(trendStrengthPos, title="ADX Dots", style = shape.circle, location = location.absolute, color = trendStrengthColor, size = size.tiny, display = display.pane)
 plot(adxValue, title="ADX", color=color.fuchsia, display=display.status_line)
+
+if (showLabel and barstate.islast)
+    var label lblADXTrendStrengthDots = label.new(na, trendStrengthPos, "ADX", xloc.bar_index, yloc.price, color.new(color.black, 100), label.style_label_left, color.rgb(150, 150, 150), size.small, text.align_left, tooltip="ADX Trend Strength")
+    label.set_x(lblADXTrendStrengthDots, bar_index + 1)

@@ -8,9 +8,14 @@ indicator("EMA Cloud Dots", overlay=false)
 emaFastLen = input.int(9, "Fast EMA Length", minval=1)
 emaSlowLen = input.int(21, "Slow EMA Length", minval=1)
 emaCloudTrendDirectionPos = input.int(50, "Display Level")
+showLabel = input.bool(true, "Show Label")
 
 emaFast = ta.ema(close, emaFastLen)
 emaSlow = ta.ema(close, emaSlowLen)
 
 emaCloudTrendDirectionColor = (emaFast > emaSlow) ? color.green : (emaFast < emaSlow) ? color.red : na
 plotshape(emaCloudTrendDirectionPos, title="EMA Cloud Dots", style=shape.circle, location=location.absolute, color=emaCloudTrendDirectionColor, size=size.tiny, display=display.pane)
+
+if (showLabel and barstate.islast)
+    var label lblEMACloudTrendDirectionDots = label.new(na, emaCloudTrendDirectionPos, "EMA Cloud", xloc.bar_index, yloc.price, color.new(color.black, 100), label.style_label_left, color.rgb(150, 150, 150), size.small, text.align_left, tooltip="EMA Cloud Trend Direction")
+    label.set_x(lblEMACloudTrendDirectionDots, bar_index + 1)
