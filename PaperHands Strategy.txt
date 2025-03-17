@@ -1,0 +1,736 @@
+//@version=6
+strategy("PaperHands Strategy v1.7",
+     overlay=false,
+     explicit_plot_zorder=true,
+     calc_on_order_fills=false,
+     calc_on_every_tick=false,
+     use_bar_magnifier=true,
+     process_orders_on_close=true,
+     fill_orders_on_standard_ohlc=true,
+     commission_type=strategy.commission.cash_per_contract,
+     commission_value=1.99,
+     default_qty_type=strategy.fixed,
+     default_qty_value=1,
+     margin_long=0,
+     margin_short=0,
+     pyramiding=1,
+     initial_capital=50000)
+
+import TradingView/ta/9
+
+////////////////////////////////////////////////////////////////////////////////
+// Enums
+////////////////////////////////////////////////////////////////////////////////
+
+enum TakeProfitType
+    None
+    Fixed
+    ATR
+
+enum StopLossType
+    Fixed
+    ATR
+
+enum MAType
+    SMA
+    EMA
+
+enum LRSI_Type
+    LaguerreRSI
+    LaguerreRSI_FractalEnergy
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Inputs
+////////////////////////////////////////////////////////////////////////////////
+
+tpType = input.enum(TakeProfitType.None, "Take-Profit Type", tooltip="Specifies the Take-Profit method.", group="Strategy")
+tpFixedTicks = input.int(20, "Take-Profit Fixed Ticks", minval=1, tooltip="Distance in ticks between Entry Price and Take-Profit price.", group="Strategy")
+tpATRMultiple = input.float(3, "Take-Profit ATR Multiple", minval=0.1, step=0.1, tooltip="ATR multiplier used to calculate distance between Entry Price and Take-Profit price.", group="Strategy")
+
+slType = input.enum(StopLossType.Fixed, "Stop-Loss Type", tooltip="Specifies the Stop-Loss method.", group="Strategy")
+slFixedTicks = input.int(10, "Stop-Loss Fixed Ticks", minval=1, tooltip="Distance in ticks between Entry Price and Stop-Loss price.", group="Strategy")
+slATRMultiple = input.float(1.5, "Stop-Loss ATR Multiple", minval=0.1, step=0.1, tooltip="ATR multiplier used to calculate distance between Entry Price and Stop-Loss price.", group="Strategy")
+
+slEnableTrailing = input.bool(false, "Enable Trailing Stop-Loss", tooltip="Enables trailing Stop-Loss when trigger price is reached.", group="Strategy")
+slTrailingTriggerTicks = input.int(20, "Trailing Stop-Loss Trigger", minval=1, tooltip="Stop-Loss begins trailing current price after reaching specified ticks in profit.", group="Strategy")
+slTrailingOffsetTicks = input.int(20, "Trailing Stop-Loss Offset", minval=1, tooltip="Stop-Loss trails current price by the specified number of ticks.", group="Strategy")
+
+slEnableBreakEven = input.bool(false, "Enable Break-Even Stop-Loss", tooltip="Enables moving Stop-Loss to break-even when trigger price is reached.", group="Strategy")
+slBreakEvenTriggerTicks = input.int(10, "Break-Even Stop-Loss Trigger", minval=1, tooltip="Stop-Loss moves to break-even after reaching specified ticks in profit.", group="Strategy")
+slBreakEvenOffsetTicks = input.int(1, "Break-Even Stop-Loss Offset", tooltip="Break-even offset (in ticks) from Entry Price.", group="Strategy")
+
+enableTradingTimeWindowFlatten = input.bool(false, "Flatten position at end of Trading Time Window", tooltip="Enables closing of open positions at end of specified Trading Time Window.", group="Strategy")
+enableBlackoutTimeWindowFlatten = input.bool(false, "Flatten position at start of Blackout Time Windows", tooltip="Enables closing of open positions at start of specified Blackout Time Windows.", group="Strategy")
+
+atrLen = input.int(14, "ATR Length", minval=1, tooltip="Length of the ATR used for Take-Profit and Stop-Loss calculations.", group="Strategy")
+
+
+showEnterLongSignals = input.bool(true, "Enter LONG", tooltip="Show LONG entry signals.", group="Signals")
+showReenterLongSignals = input.bool(true, "Re-enter LONG", tooltip="Show LONG re-entry signals.", group="Signals")
+showExitLongSignals = input.bool(true, "Exit LONG", tooltip="Show LONG exit signals.", group="Signals")
+
+showEnterShortSignals = input.bool(true, "Enter SHORT", tooltip="Show SHORT entry signals.", group="Signals")
+showReenterShortSignals = input.bool(true, "Re-enter SHORT", tooltip="Show SHORT re-entry signals.", group="Signals")
+showExitShortSignals = input.bool(true, "Exit SHORT", tooltip="Show SHORT exit signals.", group="Signals")
+
+useSignalsTradingTimeWindow = input.bool(false, "Restrict signals to the specified Trading Time Window", group="Signals")
+signalsTradingTimeWindow = input.session("0945-1530:23456", "Trading Time Window", tooltip="Enter start/end times in the EXCHANGE timezone!", group="Signals")
+
+useSignalsBlackoutTimeWindow1 = input.bool(false, "Prevent signals during the specified Blackout Time Window 1", group="Signals")
+signalsBlackoutTimeWindow1 = input.session("0915-0945:23456", "Blackout Time Window 1", tooltip="Enter start/end times in the EXCHANGE timezone!", group="Signals")
+
+useSignalsBlackoutTimeWindow2 = input.bool(false, "Prevent signals during the specified Blackout Time Window 2", group="Signals")
+signalsBlackoutTimeWindow2 = input.session("1200-1300:23456", "Blackout Time Window 2", tooltip="Enter start/end times in the EXCHANGE timezone!", group="Signals")
+
+allowSignalRepainting = input.bool(false, "Allow Repainting", tooltip="Allow signal repainting. This can give early warning that a signal is forming, but can also lead to unintended entries if actioned before the signal has confirmed at close of candle.", group="Signals")
+
+entrySignalOffset = input.int(12, "Entry Signal Offset", tooltip="Vertical offset in ticks between entry signal and candle.", group="Signals")
+exitSignalOffset = input.int(4, "Exit Signal Offset", tooltip="Vertical offset in ticks between exit signal and candle.", group="Signals")
+
+useEntryConfluence1 = input.bool(false, "Real candle correct color", tooltip = "The real candle must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Entry Confluences")
+useEntryConfluence2 = input.bool(false, "Heikin-Ashi candle correct color", tooltip = "The Heikin-Ashi candle must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Entry Confluences")
+useEntryConfluence3 = input.bool(false, "Heikin-Ashi dot correct color", tooltip = "The Heikin-Ashi dot must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Entry Confluences")
+useEntryConfluence4 = input.bool(false, "Heikin-Ashi candle has flat bottom/top", tooltip = "Heikin-Ashi candle must have a flat bottom for a LONG entry, or a flat top for a SHORT entry.", group = "Entry Confluences")
+useEntryConfluence5 = input.bool(false, "Heikin-Ashi candle is not touching EMA Cloud", tooltip = "Heikin-Ashi candle is not touching EMA Cloud.", group = "Entry Confluences")
+useEntryConfluence6 = input.bool(false, "Matching EMA Cloud trend", tooltip = "EMA Cloud must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Entry Confluences")
+useEntryConfluence7 = input.bool(false, "Widening EMA Cloud", tooltip = "EMA Cloud must be spreading wider.", group = "Entry Confluences")
+useEntryConfluence8 = input.bool(false, "Price correct side of MA1", tooltip = "Current real price must be above MA1 for a LONG entry, or below MA1 for a SHORT entry.", group = "Entry Confluences")
+useEntryConfluence9 = input.bool(false, "Price correct side of MA2", tooltip = "Current real price must be above MA2 for a LONG entry, or below MA2 for a SHORT entry.", group = "Entry Confluences")
+useEntryConfluence10 = input.bool(false, "Price correct side of VWAP", tooltip = "Current real price must be above VWAP for a LONG entry, or below VWAP for a SHORT entry.", group = "Entry Confluences")
+useEntryConfluence11 = input.bool(false, "ADX dot medium trend", tooltip = "ADX must be above medium trend strength threshold.", group = "Entry Confluences")
+useEntryConfluence12 = input.bool(false, "ADX dot strong trend", tooltip = "ADX must be above strong trend strength threshold.", group = "Entry Confluences")
+useEntryConfluence13 = input.bool(false, "VolumeDelta dot correct color", tooltip = "The VolumeDelta dot must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Entry Confluences")
+
+useReentryConfluence1 = input.bool(false, "Real candle correct color", tooltip = "The real candle must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Re-entry Confluences")
+useReentryConfluence2 = input.bool(false, "Heikin-Ashi candle correct color", tooltip = "The Heikin-Ashi candle must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Re-entry Confluences")
+useReentryConfluence3 = input.bool(false, "Heikin-Ashi dot correct color", tooltip = "The Heikin-Ashi dot must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Re-entry Confluences")
+useReentryConfluence4 = input.bool(false, "Heikin-Ashi candle has flat bottom/top", tooltip = "Heikin-Ashi candle must have a flat bottom for a LONG entry, or a flat top for a SHORT entry.", group = "Re-entry Confluences")
+useReentryConfluence5 = input.bool(false, "Heikin-Ashi candle is not touching EMA Cloud", tooltip = "Heikin-Ashi candle is not touching EMA Cloud.", group = "Re-entry Confluences")
+useReentryConfluence6 = input.bool(false, "Matching EMA Cloud trend", tooltip = "EMA Cloud must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Re-entry Confluences")
+useReentryConfluence7 = input.bool(false, "Widening EMA Cloud", tooltip = "EMA Cloud must be spreading wider.", group = "Re-entry Confluences")
+useReentryConfluence8 = input.bool(false, "Price correct side of MA1", tooltip = "Current real price must be above MA1 for a LONG entry, or below MA1 for a SHORT entry.", group = "Re-entry Confluences")
+useReentryConfluence9 = input.bool(false, "Price correct side of MA2", tooltip = "Current real price must be above MA2 for a LONG entry, or below MA2 for a SHORT entry.", group = "Re-entry Confluences")
+useReentryConfluence10 = input.bool(false, "Price correct side of VWAP", tooltip = "Current real price must be above VWAP for a LONG entry, or below VWAP for a SHORT entry.", group = "Re-entry Confluences")
+useReentryConfluence11 = input.bool(false, "ADX dot medium trend", tooltip = "ADX must be above medium trend strength threshold.", group = "Re-entry Confluences")
+useReentryConfluence12 = input.bool(false, "ADX dot strong trend", tooltip = "ADX must be above strong trend strength threshold.", group = "Re-entry Confluences")
+useReentryConfluence13 = input.bool(false, "VolumeDelta dot correct color", tooltip = "The VolumeDelta dot must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Re-entry Confluences")
+
+showRealOpen = input.bool(true, "Show Real Open", tooltip="Show the real Open price of each candle using a dot. Useful for Heikin-Ashi candles which show averaged prices.", group="Price Panel - Heikin-Ashi")
+realOpenColor = input.color(color.white, "Real Open Color", group="Price Panel - Heikin-Ashi")
+showRealClose = input.bool(true, "Show Real Close", tooltip="Show the real Close price of each candle using a dot. Useful for Heikin-Ashi candles which show averaged prices.", group="Price Panel - Heikin-Ashi")
+realCloseColor = input.color(color.fuchsia, "Real Close Color", group="Price Panel - Heikin-Ashi")
+
+
+showEMACloud = input.bool(true, "Show EMA Cloud", tooltip="Shows a colored EMA Cloud to help identify trend direction.", group="Price Panel - EMA Cloud")
+emaFastLen = input.int(9, "Fast EMA Length", minval=1, tooltip="Length of the fast EMA used by the EMA Cloud", group="Price Panel - EMA Cloud")
+emaSlowLen = input.int(21, "Slow EMA Length", minval=1, tooltip="Length of the slow EMA used by the EMA Cloud", group="Price Panel - EMA Cloud")
+
+
+ma1Enabled = input.bool(false, "Enable MA1", tooltip="Shows an optional Moving Average line on the price chart", group="Price Panel - MA 1")
+ma1Len = input.int(100, "Length", minval=1, inline="MA1", tooltip="Length of the first optional Moving Average line", group="Price Panel - MA 1")
+ma1Type = input.enum(MAType.SMA, "Type", inline="MA1", tooltip="Type of the first optional Moving Average line", group="Price Panel - MA 1")
+
+
+ma2Enabled = input.bool(false, "Enable MA2", tooltip="Shows an optional Moving Average line on the price chart", group="Price Panel - MA 2")
+ma2Len = input.int(200, "Length", minval=1, inline="MA2", tooltip="Length of the second optional Moving Average line", group="Price Panel - MA 2")
+ma2Type = input.enum(MAType.SMA, "Type", inline="MA2", tooltip="Type of the second optional Moving Average line", group="Price Panel - MA 2")
+
+
+vwapEnabled = input.bool(false, "Enable VWAP", tooltip="Shows an optional VWAP line on the price chart", group="Price Panel - VWAP")
+
+
+overboughtLevel = input.int(80, "Overbought Level", minval=51, maxval=100, tooltip="Threshold value for the overbought region.", group="Oscillator")
+oversoldLevel = input.int(20, "Oversold Level", minval=0, maxval=49, tooltip="Threshold value for the oversold region.", group="Oscillator")
+lrsiType = input.enum(LRSI_Type.LaguerreRSI_FractalEnergy, "LaguerreRSI Type", tooltip="Specifies which calculation is used for the Laguerre RSI oscillator. The Fractal Energy calculation often reacts more quickly, giving better entries.", group="Oscillator")
+
+
+showHATrendDirectionDots = input.bool(true, "Show Heikin-Ashi Trend Direction Dots", tooltip="Shows a row of dots indicating the Heikin-Ashi candle color. Also highlights changes of color, which can indicate a possible trend change.", group="Oscillator")
+showEMACloudTrendDirectionDots = input.bool(true, "Show EMA Cloud Trend Direction Dots", tooltip="Shows a row of dots indicating the color of the EMA Cloud.", group="Oscillator")
+showVolDeltaDots = input.bool(true, "Show Volume Delta Dots", tooltip="Shows a row of dots indicating Volume Delta.", group="Oscillator")
+showADXTrendStrengthDots = input.bool(true, "Show ADX Trend Strength Dots", tooltip="Shows a row of dots indicating ADX trend strength.", group="Oscillator")
+showDotLabels = input.bool(true, "Show Dot Labels", tooltip="Show labels next to the dot indicators.", group="Oscillator")
+
+
+lrsi_alpha = input.float(title='Alpha', minval=0, maxval=1, step=0.1, defval=0.2, tooltip="Alpha value used by standard Laguerre RSI calculation.", group="Oscillator - Laguerre RSI")
+
+
+nFE = input.int(title="NFE", tooltip="Number of bars used in Fractal Efficiency calculations", minval=1, defval=8, group="Oscillator - Laguerre RSI with Fractal Energy")
+Glength = input.int(title="GLength", tooltip="Period length for Go/Gh/Gl/Gc filter", minval=1, defval=13, group="Oscillator - Laguerre RSI with Fractal Energy")
+betaDev = input.int(title="BetaDev", tooltip="Controls reactivity in alpha/beta computations", minval=1, defval=8, group="Oscillator - Laguerre RSI with Fractal Energy")
+
+
+dilen = input.int(14, title="DI Length", minval=1, tooltip="Length used for calculating the Directional Index", group="Oscillator - ADX Trend Strength")
+adxlen = input.int(14, title="ADX Smoothing", minval=1, tooltip="Length used for smoothing the Directional Index", group="Oscillator - ADX Trend Strength")
+adxMediumTrendThreshold = input.float(15, "Medium Trend Threshold", minval=0, maxval=100, step=0.1, tooltip="Minimum ADX value for a medium-strength trend.", group="Oscillator - ADX Trend Strength")
+adxStrongTrendThreshold = input.float(23, "Strong Trend Threshold", minval=0, maxval=100, step=0.1, tooltip="Minimum ADX value for a strong trend.", group="Oscillator - ADX Trend Strength")
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Heikin-Ashi
+////////////////////////////////////////////////////////////////////////////////
+
+haTicker = ticker.heikinashi(syminfo.tickerid)
+[haOpen, haHigh, haLow, haClose] = request.security(haTicker, timeframe.period, [open, high, low, close])
+
+
+realPrice = ticker.new(prefix=syminfo.prefix, ticker=syminfo.ticker)
+[realOpen, realHigh, realLow, realClose] = request.security(realPrice, timeframe.period, [open, high, low, close])
+
+displayRealOpen = showRealOpen ? display.all : display.none
+displayRealClose = showRealClose ? display.all : display.none
+
+plotchar(series=chart.is_heikinashi ? realOpen : na, title="Real Open Dots", location=location.absolute, color=realOpenColor, editable=false, char="•", size=size.auto, force_overlay=true, display=displayRealOpen)
+plotchar(series=chart.is_heikinashi ? realClose : na, title="Real Close Dots", location=location.absolute, color=realCloseColor, editable=false, char="•", size=size.auto, force_overlay=true, display=displayRealClose)
+
+
+////////////////////////////////////////////////////////////////////////////////
+// EMA Cloud
+////////////////////////////////////////////////////////////////////////////////
+
+emaFast = ta.ema(realClose, emaFastLen)
+emaSlow = ta.ema(realClose, emaSlowLen)
+
+var displayEMACloud = showEMACloud ? display.all : display.none
+emaFastPlot = plot(emaFast, "Fast EMA", color=color.green, linewidth=2, force_overlay=true, display=display.none)
+emaSlowPlot = plot(emaSlow, "Slow EMA", color=color.red, linewidth=2, force_overlay = true, display=display.none)
+fill(emaFastPlot, emaSlowPlot, emaFast >= emaSlow ? color.rgb(76,175,80, 60) : color.rgb(255, 82, 82, 60), "EMA Cloud", display=displayEMACloud)
+
+
+////////////////////////////////////////////////////////////////////////////////
+// ADX
+////////////////////////////////////////////////////////////////////////////////
+
+dirmov(len) =>
+    up = ta.change(realHigh)
+    down = -ta.change(realLow)
+    plusDM = na(up) ? na : (up > down and up > 0 ? up : 0)
+    minusDM = na(down) ? na : (down > up and down > 0 ? down : 0)
+    truerange = ta.rma(math.max(realHigh - realLow, math.abs(realHigh - realClose[1]), math.abs(realLow - realClose[1])), len)
+    plus = fixnan(100 * ta.rma(plusDM, len) / truerange)
+    minus = fixnan(100 * ta.rma(minusDM, len) / truerange)
+    [plus, minus]
+
+adx(dilen, adxlen) =>
+    [plus, minus] = dirmov(dilen)
+    sum = plus + minus
+    adx = 100 * ta.rma(math.abs(plus - minus) / (sum == 0 ? 1 : sum), adxlen)
+
+adxValue = adx(dilen, adxlen)
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Oscillator Regions
+////////////////////////////////////////////////////////////////////////////////
+
+plot100 = plot(100, display=display.none, editable=false)
+plotOverboughtLevel = plot(overboughtLevel, display=display.none, editable=false)
+plotOversoldLevel = plot(oversoldLevel, display=display.none, editable=false)
+plot0 = plot(0, display=display.none, editable=false)
+fill(plot100, plotOverboughtLevel, color.rgb(178,40,51,60), "Overbought Region")
+fill(plot0, plotOversoldLevel, color.rgb(56,142,60,60), "Oversold Region")
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Laguerre RSI
+////////////////////////////////////////////////////////////////////////////////
+
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// Developer: John EHLERS
+// © KivancOzbilgic
+// Author:Kıvanç Özbilgiç
+
+lrsi_gamma = 1 - lrsi_alpha
+lrsi_L0 = 0.0
+lrsi_L0 := (1 - lrsi_gamma) * realClose + lrsi_gamma * nz(lrsi_L0[1])
+lrsi_L1 = 0.0
+lrsi_L1 := -lrsi_gamma * lrsi_L0 + nz(lrsi_L0[1]) + lrsi_gamma * nz(lrsi_L1[1])
+lrsi_L2 = 0.0
+lrsi_L2 := -lrsi_gamma * lrsi_L1 + nz(lrsi_L1[1]) + lrsi_gamma * nz(lrsi_L2[1])
+lrsi_L3 = 0.0
+lrsi_L3 := -lrsi_gamma * lrsi_L2 + nz(lrsi_L2[1]) + lrsi_gamma * nz(lrsi_L3[1])
+lrsi_cu = (lrsi_L0 > lrsi_L1 ? lrsi_L0 - lrsi_L1 : 0) + (lrsi_L1 > lrsi_L2 ? lrsi_L1 - lrsi_L2 : 0) + (lrsi_L2 > lrsi_L3 ? lrsi_L2 - lrsi_L3 : 0)
+lrsi_cd = (lrsi_L0 < lrsi_L1 ? lrsi_L1 - lrsi_L0 : 0) + (lrsi_L1 < lrsi_L2 ? lrsi_L2 - lrsi_L1 : 0) + (lrsi_L2 < lrsi_L3 ? lrsi_L3 - lrsi_L2 : 0)
+lrsi_temp = lrsi_cu + lrsi_cd == 0 ? -1 : lrsi_cu + lrsi_cd
+lrsi_LaRSI = 100 * (lrsi_temp == -1 ? 0 : lrsi_cu / lrsi_temp)
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Laguerre RSI with Fractal Energy
+// https://usethinkscript.com/threads/rsi-laguerre-with-fractal-energy-for-thinkorswim.116/
+////////////////////////////////////////////////////////////////////////////////
+
+float w = (2.0 * math.pi / Glength)
+float beta = (1 - math.cos(w)) / (math.pow(1.414, 2.0 / betaDev) - 1)
+float alpha = (-beta + math.sqrt(beta * beta + 2 * beta))
+float Go = na
+float Gh = na
+float Gl = na
+float Gc = na
+Go := math.pow(alpha, 4) * realOpen + 4 * (1.0 - alpha) * nz(Go[1]) - 6 * math.pow( 1 - alpha, 2) * nz(Go[2]) + 4 * math.pow( 1 - alpha, 3) * nz(Go[3]) - math.pow( 1 - alpha, 4 ) * nz(Go[4])
+Gh := math.pow(alpha, 4) * realHigh + 4 * (1.0 - alpha) * nz(Gh[1]) - 6 * math.pow( 1 - alpha, 2 ) * nz(Gh[2]) + 4 * math.pow( 1 - alpha, 3 ) * nz(Gh[3]) - math.pow( 1 - alpha, 4 ) * nz(Gh[4])
+Gl := math.pow(alpha, 4) * realLow + 4 * (1.0 - alpha) * nz(Gl[1]) - 6 * math.pow( 1 - alpha, 2 ) * nz(Gl[2]) + 4 * math.pow( 1 - alpha, 3 ) * nz(Gl[3]) - math.pow( 1 - alpha, 4 ) * nz(Gl[4])
+Gc := math.pow(alpha, 4) * realClose + 4 * (1.0 - alpha) * nz(Gc[1]) - 6 * math.pow( 1 - alpha, 2 ) * nz(Gc[2]) + 4 * math.pow( 1 - alpha, 3 ) * nz(Gc[3]) - math.pow( 1 - alpha, 4 ) * nz(Gc[4])
+// Variables:
+float o = na
+float h = na
+float l = na
+float c = na
+float CU1 = na
+float CU2 = na
+float CU = na
+float CD1 = na
+float CD2 = na
+float CD = na
+float L0 = na
+float L1 = na
+float L2 = na
+float L3 = na
+
+// Calculations
+o := (Go + nz(Gc[1])) / 2.0
+h := math.max(Gh, nz(Gc[1]))
+l := math.min(Gl, nz(Gc[1]))
+c := (o + h + l + Gc) / 4.0
+gamma = math.log(math.sum((math.max(Gh, nz(Gc[1])) - math.min(Gl, nz(Gc[1]))), nFE) / (ta.highest(Gh, nFE) - ta.lowest(Gl, nFE))) / math.log(nFE)
+L0 := (1.0 - gamma) * Gc + gamma * nz(L0[1])
+L1 := -gamma * L0 + nz(L0[1]) + gamma * nz(L1[1])
+L2 := -gamma * L1 + nz(L1[1]) + gamma * nz(L2[1])
+L3 := -gamma * L2 + nz(L2[1]) + gamma * nz(L3[1])
+if L0 >= L1
+    CU1 := L0 - L1
+    CD1 := 0
+else
+    CD1 := L1 - L0
+    CU1 := 0
+
+if L1 >= L2
+    CU2 := CU1 + L1 - L2
+    CD2 := CD1
+else
+    CD2 := CD1 + L2 - L1
+    CU2 := CU1
+
+if L2 >= L3
+    CU := CU2 + L2 - L3
+    CD := CD2
+else
+    CU := CU2
+    CD := CD2 + L3 - L2
+
+lrsife_LaRSI = (CU + CD != 0) ? 100 * (CU / (CU + CD)) : 0
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Dot Indicators
+////////////////////////////////////////////////////////////////////////////////
+
+var numDotRows = (showHATrendDirectionDots ? 1 : 0) + (showEMACloudTrendDirectionDots ? 1 : 0) + (showVolDeltaDots ? 1 : 0) + (showADXTrendStrengthDots ? 1 : 0)
+var marginDotRows = (overboughtLevel - oversoldLevel) / (numDotRows + 1)
+
+// HA Dots
+prevBarTrend = haClose[1] >= haOpen[1] ? 1 : -1
+currBarTrend = haClose[0] >= haOpen[0] ? 1 : -1
+haTrendDirectionColor = (currBarTrend == prevBarTrend and currBarTrend > 0) ? color.green : ((currBarTrend == prevBarTrend and currBarTrend < 0) ? color.red : color.yellow)
+haTrendDirectionPos = overboughtLevel - marginDotRows
+plotshape(showHATrendDirectionDots ? haTrendDirectionPos : na, title="Heikin-Ashi Trend Direction Dots", style = shape.circle, location = location.absolute, color = haTrendDirectionColor, size = size.tiny, display = display.pane)
+
+// EMA Cloud Dots
+emaCloudTrendDirectionColor = (emaFast > emaSlow) ? color.green : ((emaFast < emaSlow) ? color.red : na)
+emaCloudTrendDirectionPos = overboughtLevel - ((1 + (showHATrendDirectionDots ? 1 : 0)) * marginDotRows)
+plotshape(showEMACloudTrendDirectionDots ? emaCloudTrendDirectionPos : na, title="EMA Cloud Trend Direction Dots", style = shape.circle, location = location.absolute, color = emaCloudTrendDirectionColor, size = size.tiny, display = display.pane)
+
+// Volume Delta Dots
+var lowerTimeframe = switch
+    timeframe.isseconds     => "1S"
+    timeframe.isintraday    => "1"
+    timeframe.isdaily       => "5"
+    => "60"
+[openVolume, maxVolume, minVolume, volDelta] = ta.requestVolumeDelta(lowerTimeframe)
+var cumVol = 0.
+cumVol += nz(volume)
+if barstate.islast and cumVol == 0
+    runtime.error("VolumeDeltaDots: The data vendor doesn't provide volume data for this symbol.")
+volDeltaColor = volDelta >= 0 ? color.green : color.red
+volDeltaPos = overboughtLevel - ((1 + (showHATrendDirectionDots ? 1 : 0) + (showEMACloudTrendDirectionDots ? 1 : 0)) * marginDotRows)
+plotshape(showVolDeltaDots ? volDeltaPos : na, title="Volume Delta Dots", style = shape.circle, location = location.absolute, color = volDeltaColor, size = size.tiny, display = display.pane)
+plot(volDelta, "Volume Delta", color=volDeltaColor, display=display.status_line)
+
+// ADX Dots
+adxTrendStrengthColor = (adxValue >= adxStrongTrendThreshold) ? #7b1fa2 : (adxValue >= adxMediumTrendThreshold) ? #ba68c8 : #e1bee7
+adxTrendStrengthPos = overboughtLevel - ((1 + (showHATrendDirectionDots ? 1 : 0) + (showEMACloudTrendDirectionDots ? 1 : 0) + (showVolDeltaDots ? 1 : 0)) * marginDotRows)
+plotshape(showADXTrendStrengthDots ? adxTrendStrengthPos : na, title="ADX Trend Strength Dots", style = shape.circle, location = location.absolute, color = adxTrendStrengthColor, size = size.tiny, display = display.pane)
+plot(adxValue, title="ADX", color=color.fuchsia, display=display.status_line)
+
+// Dot Labels
+if (showDotLabels)
+    if (barstate.islast)
+        if (showHATrendDirectionDots)
+            var label lblHATrendDirectionDots = label.new(na, haTrendDirectionPos, "Heikin-Ashi", xloc.bar_index, yloc.price, color.new(color.black, 100), label.style_label_left, color.rgb(150, 150, 150), size.small, text.align_left, tooltip="Heikin-Ashi Trend Direction")
+            label.set_x(lblHATrendDirectionDots, bar_index + 1)
+        if (showEMACloudTrendDirectionDots)
+            var label lblEMACloudTrendDirectionDots = label.new(na, emaCloudTrendDirectionPos, "EMA Cloud", xloc.bar_index, yloc.price, color.new(color.black, 100), label.style_label_left, color.rgb(150, 150, 150), size.small, text.align_left, tooltip="EMA Cloud Trend Direction")
+            label.set_x(lblEMACloudTrendDirectionDots, bar_index + 1)
+        if (showVolDeltaDots)
+            var label lblVolDeltaDots = label.new(na, volDeltaPos, "Volume Delta", xloc.bar_index, yloc.price, color.new(color.black, 100), label.style_label_left, color.rgb(150, 150, 150), size.small, text.align_left, tooltip="Volume Delta")
+            label.set_x(lblVolDeltaDots, bar_index + 1)
+        if (showADXTrendStrengthDots)
+            var label lblADXTrendStrengthDots = label.new(na, adxTrendStrengthPos, "ADX", xloc.bar_index, yloc.price, color.new(color.black, 100), label.style_label_left, color.rgb(150, 150, 150), size.small, text.align_left, tooltip="ADX Trend Strength")
+            label.set_x(lblADXTrendStrengthDots, bar_index + 1)
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Laguerre RSI Plotting
+////////////////////////////////////////////////////////////////////////////////
+
+LaRSI = (lrsiType == LRSI_Type.LaguerreRSI_FractalEnergy) ? lrsife_LaRSI : lrsi_LaRSI
+plot(LaRSI, title='Laguerre RSI', linewidth=2, color=color.white)
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Helpers
+////////////////////////////////////////////////////////////////////////////////
+
+ma1 = (ma1Type == MAType.EMA) ? ta.ema(realClose, ma1Len) : ta.sma(realClose, ma1Len)
+plot(ma1Enabled ? ma1 : na, "MA1", color.fuchsia, linewidth=2, force_overlay=true)
+
+ma2 = (ma2Type == MAType.EMA) ? ta.ema(realClose, ma2Len) : ta.sma(realClose, ma2Len)
+plot(ma2Enabled ? ma2 : na, "MA2", color.yellow, linewidth=2, force_overlay=true)
+
+vwap = ta.vwap(realClose)
+plot(vwapEnabled ? vwap : na, "VWAP", color.aqua, linewidth=2, force_overlay=true)
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Extra Confluences
+////////////////////////////////////////////////////////////////////////////////
+
+// Real candle correct color
+confluence1Long = (realClose[0] > realOpen[0])
+confluence1Short = (realClose[0] < realOpen[0])
+
+// Heikin-Ashi candle correct color
+confluence2Long = (haClose[0] > haOpen[0])
+confluence2Short = (haClose[0] < haOpen[0])
+
+// Heikin-Ashi dot correct color
+confluence3Long = (currBarTrend == prevBarTrend and currBarTrend > 0)
+confluence3Short = (currBarTrend == prevBarTrend and currBarTrend < 0)
+
+// HA candle with flat bottom/top
+confluence4Long = (haOpen[0] == haLow[0])
+confluence4Short = (haOpen[0] == haHigh[0])
+
+// HA candle not touching EMA Cloud
+confluence5Long = (haLow[0] > math.max(emaFast, emaSlow))
+confluence5Short = (haHigh[0] < math.min(emaFast, emaSlow))
+
+// Matching EMA Cloud trend
+confluence6Long = (emaFast[0] > emaSlow[0])
+confluence6Short = (emaFast[0] < emaSlow[0])
+
+// Widening EMA Cloud
+confluence7 = math.abs(emaFast[0] - emaSlow[0]) > math.abs(emaFast[1] - emaSlow[1])
+
+// Price correct side of MA1
+confluence8Long = (realClose[0] > ma1[0])
+confluence8Short = (realClose[0] < ma1[0])
+
+// Price correct side of MA2
+confluence9Long = (realClose[0] > ma2[0])
+confluence9Short = (realClose[0] < ma2[0])
+
+// Price correct side of VWAP
+confluence10Long = (realClose[0] > vwap[0])
+confluence10Short = (realClose[0] < vwap[0])
+
+// ADX dot medium trend
+confluence11 = (adxValue >= adxMediumTrendThreshold)
+
+// ADX dot strong trend
+confluence12 = (adxValue >= adxStrongTrendThreshold)
+
+// VolumeDelta dot correct color
+confluence13Long = (volDelta > 0)
+confluence13Short = (volDelta < 0)
+
+
+entryConfluencesLong = ((not useEntryConfluence1) or (useEntryConfluence1 and confluence1Long)) and
+     ((not useEntryConfluence2) or (useEntryConfluence2 and confluence2Long)) and
+     ((not useEntryConfluence3) or (useEntryConfluence3 and confluence3Long)) and
+     ((not useEntryConfluence4) or (useEntryConfluence4 and confluence4Long)) and
+     ((not useEntryConfluence5) or (useEntryConfluence5 and confluence5Long)) and
+     ((not useEntryConfluence6) or (useEntryConfluence6 and confluence6Long)) and
+     ((not useEntryConfluence7) or (useEntryConfluence7 and confluence7)) and
+     ((not useEntryConfluence8) or (useEntryConfluence8 and confluence8Long)) and
+     ((not useEntryConfluence9) or (useEntryConfluence9 and confluence9Long)) and
+     ((not useEntryConfluence10) or (useEntryConfluence10 and confluence10Long)) and
+     ((not useEntryConfluence11) or (useEntryConfluence11 and confluence11)) and
+     ((not useEntryConfluence12) or (useEntryConfluence12 and confluence12)) and
+     ((not useEntryConfluence13) or (useEntryConfluence13 and confluence13Long))
+
+entryConfluencesShort = ((not useEntryConfluence1) or (useEntryConfluence1 and confluence1Short)) and
+     ((not useEntryConfluence2) or (useEntryConfluence2 and confluence2Short)) and
+     ((not useEntryConfluence3) or (useEntryConfluence3 and confluence3Short)) and
+     ((not useEntryConfluence4) or (useEntryConfluence4 and confluence4Short)) and
+     ((not useEntryConfluence5) or (useEntryConfluence5 and confluence5Short)) and
+     ((not useEntryConfluence6) or (useEntryConfluence6 and confluence6Short)) and
+     ((not useEntryConfluence7) or (useEntryConfluence7 and confluence7)) and
+     ((not useEntryConfluence8) or (useEntryConfluence8 and confluence8Short)) and
+     ((not useEntryConfluence9) or (useEntryConfluence9 and confluence9Short)) and
+     ((not useEntryConfluence10) or (useEntryConfluence10 and confluence10Short)) and
+     ((not useEntryConfluence11) or (useEntryConfluence11 and confluence11)) and
+     ((not useEntryConfluence12) or (useEntryConfluence12 and confluence12)) and
+     ((not useEntryConfluence13) or (useEntryConfluence13 and confluence13Short))
+
+reentryConfluencesLong = ((not useReentryConfluence1) or (useReentryConfluence1 and confluence1Long)) and
+     ((not useReentryConfluence2) or (useReentryConfluence2 and confluence2Long)) and
+     ((not useReentryConfluence3) or (useReentryConfluence3 and confluence3Long)) and
+     ((not useReentryConfluence4) or (useReentryConfluence4 and confluence4Long)) and
+     ((not useReentryConfluence5) or (useReentryConfluence5 and confluence5Long)) and
+     ((not useReentryConfluence6) or (useReentryConfluence6 and confluence6Long)) and
+     ((not useReentryConfluence7) or (useReentryConfluence7 and confluence7)) and
+     ((not useReentryConfluence8) or (useReentryConfluence8 and confluence8Long)) and
+     ((not useReentryConfluence9) or (useReentryConfluence9 and confluence9Long)) and
+     ((not useReentryConfluence10) or (useReentryConfluence10 and confluence10Long)) and
+     ((not useReentryConfluence11) or (useReentryConfluence11 and confluence11)) and
+     ((not useReentryConfluence12) or (useReentryConfluence12 and confluence12)) and
+     ((not useReentryConfluence13) or (useReentryConfluence13 and confluence13Long))
+
+reentryConfluencesShort = ((not useReentryConfluence1) or (useReentryConfluence1 and confluence1Short)) and
+     ((not useReentryConfluence2) or (useReentryConfluence2 and confluence2Short)) and
+     ((not useReentryConfluence3) or (useReentryConfluence3 and confluence3Short)) and
+     ((not useReentryConfluence4) or (useReentryConfluence4 and confluence4Short)) and
+     ((not useReentryConfluence5) or (useReentryConfluence5 and confluence5Short)) and
+     ((not useReentryConfluence6) or (useReentryConfluence6 and confluence6Short)) and
+     ((not useReentryConfluence7) or (useReentryConfluence7 and confluence7)) and
+     ((not useReentryConfluence8) or (useReentryConfluence8 and confluence8Short)) and
+     ((not useReentryConfluence9) or (useReentryConfluence9 and confluence9Short)) and
+     ((not useReentryConfluence10) or (useReentryConfluence10 and confluence10Short)) and
+     ((not useReentryConfluence11) or (useReentryConfluence11 and confluence11)) and
+     ((not useReentryConfluence12) or (useReentryConfluence12 and confluence12)) and
+     ((not useReentryConfluence13) or (useReentryConfluence13 and confluence13Short))
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Signals
+////////////////////////////////////////////////////////////////////////////////
+
+allowSignals(int idx) =>
+    ((not useSignalsTradingTimeWindow) or (useSignalsTradingTimeWindow and not na(time(timeframe.period, signalsTradingTimeWindow, syminfo.timezone, idx))))
+     and
+     ((not useSignalsBlackoutTimeWindow1) or (useSignalsBlackoutTimeWindow1 and na(time(timeframe.period, signalsBlackoutTimeWindow1, syminfo.timezone, idx))))
+     and
+     ((not useSignalsBlackoutTimeWindow2) or (useSignalsBlackoutTimeWindow2 and na(time(timeframe.period, signalsBlackoutTimeWindow2, syminfo.timezone, idx))))
+
+bgcolor(allowSignals(0) ? na : color.rgb(50,50,60,0), force_overlay=true)
+
+signalFilter = (allowSignalRepainting or barstate.isconfirmed) and allowSignals(0)
+
+// Enter long - LRSI
+enterLongCond = ta.crossover(LaRSI, oversoldLevel)
+enterLongSignal = showEnterLongSignals and signalFilter and enterLongCond and entryConfluencesLong
+enterLongSignalPrice = enterLongSignal ? (low - (entrySignalOffset * syminfo.mintick)) : na
+plotshape(enterLongSignalPrice, title="Enter LONG", style=shape.triangleup, location=location.absolute, color=#3fff00, size=size.tiny, force_overlay=true, display=display.pane)
+// Re-enter long - Return to same color trend dot
+reenterLongCond = (LaRSI > 50) and (currBarTrend == 1) and (currBarTrend[1] == 1) and (currBarTrend[1] != prevBarTrend[1])
+reenterLongSignal = showReenterLongSignals and signalFilter and reenterLongCond and reentryConfluencesLong
+reenterLongSignalPrice = reenterLongSignal ? (low - (entrySignalOffset * syminfo.mintick)) : na
+plotshape(reenterLongSignalPrice, title="Re-enter LONG", style=shape.triangleup, location=location.absolute, color=#3fff00, size=size.tiny, force_overlay=true, display=display.pane)
+// Any enter long
+anyEnterLongSignal = enterLongSignal or reenterLongSignal
+
+// Enter short - LRSI
+enterShortCond = ta.crossunder(LaRSI, overboughtLevel)
+enterShortSignal = showEnterShortSignals and signalFilter and enterShortCond and entryConfluencesShort
+enterShortSignalPrice = enterShortSignal ? (high + (entrySignalOffset * syminfo.mintick)) : na
+plotshape(enterShortSignalPrice, title="Enter SHORT", style=shape.triangledown, location=location.absolute, color=#ff0000, size=size.tiny, force_overlay=true, display=display.pane)
+// Re-enter short - Return to same color trend dot
+reenterShortCond = (LaRSI < 50) and (currBarTrend == -1) and (currBarTrend[1] == -1) and (currBarTrend[1] != prevBarTrend[1])
+reenterShortSignal = showReenterShortSignals and signalFilter and reenterShortCond and reentryConfluencesShort
+reenterShortSignalPrice = reenterShortSignal ? (high + (entrySignalOffset * syminfo.mintick)) : na
+plotshape(reenterShortSignalPrice, title="Re-enter SHORT", style=shape.triangledown, location=location.absolute, color=#ff0000, size=size.tiny, force_overlay=true, display=display.pane)
+// Any enter short
+anyEnterShortSignal = enterShortSignal or reenterShortSignal
+
+bgcolor(enterLongSignal ? color.new(color.green, 50) : enterShortSignal ? color.new(color.red, 50) : na, title="LRSI Entry Signal Background")
+
+// Exit long - Opposite flat top
+exitLongOppositeFlatTopCond = (emaFast > emaSlow) and (haClose < haOpen) and (haHigh == haOpen)
+exitLongOppositeFlatTopSignal = showExitLongSignals and signalFilter and exitLongOppositeFlatTopCond
+// Exit long - Opposite color trend dot
+exitLongOppositeTrendDotCond = (emaFast > emaSlow) and (currBarTrend == -1) and (currBarTrend[1] == -1) and (currBarTrend[1] != prevBarTrend[1])
+exitLongOppositeTrendDotSignal = showExitLongSignals and signalFilter and exitLongOppositeTrendDotCond
+// Any exit long
+anyExitLongSignal = exitLongOppositeFlatTopSignal or exitLongOppositeTrendDotSignal
+anyExitLongSignalPrice = anyExitLongSignal ? (high + (exitSignalOffset * syminfo.mintick)) : na
+plotshape(anyExitLongSignalPrice, title="Exit LONG", style=shape.diamond, location=location.absolute, color=color.green, size=size.tiny, force_overlay=true, display=display.pane)
+
+// Exit short - Opposite flat bottom
+exitShortOppositeFlatBottomCond = (emaFast < emaSlow) and (haClose > haOpen) and (haLow == haOpen)
+exitShortOppositeFlatBottomSignal = showExitShortSignals and signalFilter and exitShortOppositeFlatBottomCond
+// Exit short - Opposite color trend dot
+exitShortOppositeTrendDotCond = (emaFast < emaSlow) and (currBarTrend == 1) and (currBarTrend[1] == 1) and (currBarTrend[1] != prevBarTrend[1])
+exitShortOppositeTrendDotSignal = showExitShortSignals and signalFilter and exitShortOppositeTrendDotCond
+// Any exit short
+anyExitShortSignal = exitShortOppositeFlatBottomSignal or exitShortOppositeTrendDotSignal
+anyExitShortSignalPrice = anyExitShortSignal ? (low - (exitSignalOffset * syminfo.mintick)) : na
+plotshape(anyExitShortSignalPrice, title="Exit SHORT", style=shape.diamond, location=location.absolute, color=color.red, size=size.tiny, force_overlay=true, display=display.pane)
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Alerts
+////////////////////////////////////////////////////////////////////////////////
+
+// Enter long - LRSI
+if (enterLongSignal)
+    alert('Enter LONG: Laguerre RSI leaving oversold region (' + str.tostring(LaRSI, '#.0') + ')')
+// Re-enter long - Return to same color trend dot
+if (reenterLongSignal)
+    alert('Re-enter LONG: Trend returning to bullish')
+
+// Enter short - LRSI
+if (enterShortSignal)
+    alert('Enter SHORT: Laguerre RSI leaving overbought region (' + str.tostring(LaRSI, '#.0') + ')')
+// Re-enter short - Return to same color trend dot
+if (reenterShortSignal)
+    alert('Re-enter SHORT: Trend returning to bearish')
+
+// Exit long - Opposite flat top
+if (exitLongOppositeFlatTopSignal)
+    alert('Exit LONG: Bearish HA candle with flat top')
+// Exit long - Opposite color trend dot
+if (exitLongOppositeTrendDotSignal)
+    alert('Exit LONG: Bearish trend dot')
+
+// Exit short - Opposite flat bottom
+if (exitShortOppositeFlatBottomSignal)
+    alert('Exit SHORT: Bullish HA candle with flat bottom')
+// Exit short - Opposite color trend dot
+if (exitShortOppositeTrendDotSignal)
+    alert('Exit SHORT: Bullish trend dot')
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Strategy
+////////////////////////////////////////////////////////////////////////////////
+
+atr = ta.atr(atrLen)
+var float lastATR = 0
+lastATR := atr[1]
+
+priceToTicks(float price) =>
+    math.round(price / syminfo.mintick)
+
+ticksToPrice(int ticks) =>
+    ticks * syminfo.mintick
+
+calc_long_tp_price(float entryPrice) => switch tpType
+    TakeProfitType.Fixed => math.round_to_mintick(entryPrice + ticksToPrice(tpFixedTicks))
+    TakeProfitType.ATR => math.round_to_mintick(entryPrice + (lastATR * tpATRMultiple))
+    => na
+
+calc_short_tp_price(float entryPrice) => switch tpType
+    TakeProfitType.Fixed => math.round_to_mintick(entryPrice - ticksToPrice(tpFixedTicks))
+    TakeProfitType.ATR => math.round_to_mintick(entryPrice - (lastATR * tpATRMultiple))
+    => na
+
+calc_long_sl_price(float entryPrice) => switch slType
+    StopLossType.Fixed => math.round_to_mintick(entryPrice - ticksToPrice(slFixedTicks))
+    StopLossType.ATR => math.round_to_mintick(entryPrice - (lastATR * slATRMultiple))
+    => na
+
+calc_short_sl_price(float entryPrice) => switch slType
+    StopLossType.Fixed => math.round_to_mintick(entryPrice + ticksToPrice(slFixedTicks))
+    StopLossType.ATR => math.round_to_mintick(entryPrice + (lastATR * slATRMultiple))
+    => na
+
+
+var float entryPrice = na               // The current entry price.
+var float takeProfitPrice = na          // The current take-profit order price.
+var float stopLossPrice = na            // The current stop-loss order price.
+var bool trailingSLTriggered = false    // Indicates if trailing SL has been triggered.
+var bool resetPrices = false            // Indicates if chart price levels should be reset (after a position closes)
+
+// Exit
+if (strategy.opentrades > 0)
+    // We ARE in a trade, check for exit signals.
+    if (useSignalsBlackoutTimeWindow1 and enableBlackoutTimeWindowFlatten and not na(time(timeframe.period, signalsBlackoutTimeWindow1, syminfo.timezone)))
+        strategy.close_all("BlackoutTimeWindow1")
+    else if (useSignalsBlackoutTimeWindow2 and enableBlackoutTimeWindowFlatten and not na(time(timeframe.period, signalsBlackoutTimeWindow2, syminfo.timezone)))
+        strategy.close_all("BlackoutTimeWindow2")
+    else if (useSignalsTradingTimeWindow and enableTradingTimeWindowFlatten and na(time(timeframe.period, signalsTradingTimeWindow, syminfo.timezone)))
+        strategy.close_all("TradingTimeWindow")
+    if (anyExitLongSignal)
+        strategy.close("Long")
+    if (anyExitShortSignal)
+        strategy.close("Short")
+
+// Management
+if (strategy.opentrades > 0)
+    // We are STILL in a trade, so perform any required trade management.
+    // Move SL to BE.
+    if (slEnableBreakEven)
+        if strategy.position_size > 0 and (priceToTicks(realHigh - entryPrice) >= slBreakEvenTriggerTicks)
+            theoreticalBreakEvenSL = (entryPrice + ticksToPrice(slBreakEvenOffsetTicks))
+            if (theoreticalBreakEvenSL > stopLossPrice)
+                stopLossPrice := theoreticalBreakEvenSL
+                strategy.exit("Long", limit=takeProfitPrice, stop=stopLossPrice, comment_profit="TP", comment_loss="SL", trail_points=(slEnableTrailing ? slTrailingTriggerTicks : na), trail_offset=(slEnableTrailing ? slTrailingOffsetTicks : na), comment_trailing=(slEnableTrailing ? "Trailing SL" : na))
+        else if strategy.position_size < 0 and (priceToTicks(entryPrice - realLow) >= slBreakEvenTriggerTicks)
+            theoreticalBreakEvenSL = (entryPrice - ticksToPrice(slBreakEvenOffsetTicks))
+            if (theoreticalBreakEvenSL < stopLossPrice)
+                stopLossPrice := theoreticalBreakEvenSL
+                strategy.exit("Short", limit=takeProfitPrice, stop=stopLossPrice, comment_profit="TP", comment_loss="SL", trail_points=(slEnableTrailing ? slTrailingTriggerTicks : na), trail_offset=(slEnableTrailing ? slTrailingOffsetTicks : na), comment_trailing=(slEnableTrailing ? "Trailing SL" : na))
+    // Update trailing SL (on chart only)
+    if (slEnableTrailing)
+        // Check if trailing SL has been triggered.
+        if (not trailingSLTriggered)
+            if (strategy.position_size > 0)
+                if (priceToTicks(realHigh - entryPrice) >= slTrailingTriggerTicks)
+                    trailingSLTriggered := true
+            else if (strategy.position_size < 0)
+                if (priceToTicks(entryPrice - realLow) >= slTrailingTriggerTicks)
+                    trailingSLTriggered := true
+        // If trailing SL has been triggered then update SL.
+        if (trailingSLTriggered)
+            if (strategy.position_size > 0)
+                theoreticalTrailingSL = (realHigh - ticksToPrice(slTrailingOffsetTicks))
+                if (theoreticalTrailingSL > stopLossPrice)
+                    stopLossPrice := theoreticalTrailingSL
+            else if (strategy.position_size < 0)
+                theoreticalTrailingSL = (realLow + ticksToPrice(slTrailingOffsetTicks))
+                if (theoreticalTrailingSL < stopLossPrice)
+                    stopLossPrice := theoreticalTrailingSL
+
+
+// Entry
+if (strategy.opentrades == 0)
+    // NOT in a trade, check for entry signals.
+    if resetPrices
+        entryPrice := na
+        takeProfitPrice := na
+        stopLossPrice := na
+        trailingSLTriggered := false
+        resetPrices := false
+    if (enterLongSignal or reenterLongSignal)
+        entryPrice := realClose
+        takeProfitPrice := calc_long_tp_price(entryPrice)
+        stopLossPrice := calc_long_sl_price(entryPrice)
+        trailingSLTriggered := false
+        strategy.entry("Long", strategy.long)
+        strategy.exit("Long", limit=takeProfitPrice, stop=stopLossPrice, comment_profit="TP", comment_loss="SL", trail_points=(slEnableTrailing ? slTrailingTriggerTicks : na), trail_offset=(slEnableTrailing ? slTrailingOffsetTicks : na), comment_trailing=(slEnableTrailing ? "Trailing SL" : na))
+    else if (enterShortSignal or reenterShortSignal)
+        entryPrice := realClose
+        takeProfitPrice := calc_short_tp_price(entryPrice)
+        stopLossPrice := calc_short_sl_price(entryPrice)
+        trailingSLTriggered := false
+        strategy.entry("Short", strategy.short)
+        strategy.exit("Short", limit=takeProfitPrice, stop=stopLossPrice, comment_profit="TP", comment_loss="SL", trail_points=(slEnableTrailing ? slTrailingTriggerTicks : na), trail_offset=(slEnableTrailing ? slTrailingOffsetTicks : na), comment_trailing=(slEnableTrailing ? "Trailing SL" : na))
+
+// Clear EP/TP/SL when the position closes.
+if ta.change(strategy.closedtrades) > 0
+    resetPrices := true
+
+plot(entryPrice, "EP", color=color.white, style=plot.style_linebr, linewidth=2, force_overlay=true)
+plot(takeProfitPrice, "TP", color=color.green, style=plot.style_linebr, linewidth=2, force_overlay=true)
+plot(stopLossPrice, "SL", color=#880e4f, style=plot.style_linebr, linewidth=2, force_overlay=true)
