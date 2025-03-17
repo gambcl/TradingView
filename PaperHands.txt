@@ -1,7 +1,7 @@
 //@version=6
-indicator("PaperHands v1.6", overlay=false, explicit_plot_zorder=true)
+indicator("PaperHands v1.7", overlay=false, explicit_plot_zorder=true)
 
-import TradingView/ta/8
+import TradingView/ta/9
 
 ////////////////////////////////////////////////////////////////////////////////
 // Enums
@@ -28,37 +28,47 @@ showEnterShortSignals = input.bool(true, "Enter SHORT", tooltip="Show SHORT entr
 showReenterShortSignals = input.bool(true, "Re-enter SHORT", tooltip="Show SHORT re-entry signals.", group="Signals")
 showExitShortSignals = input.bool(true, "Exit SHORT", tooltip="Show SHORT exit signals.", group="Signals")
 
-useSignalsTimeWindow = input.bool(false, "Restrict signals to the specified time window", group="Signals")
-signalsTimeWindow = input.session("0945-1530:23456", "Signals Time Window", tooltip="Enter start/end times in the EXCHANGE timezone!", group="Signals")
+useSignalsTradingTimeWindow = input.bool(false, "Restrict signals to the specified Trading Time Window", group="Signals")
+signalsTradingTimeWindow = input.session("0945-1530:23456", "Trading Time Window", tooltip="Enter start/end times in the EXCHANGE timezone!", group="Signals")
+
+useSignalsBlackoutTimeWindow1 = input.bool(false, "Prevent signals during the specified Blackout Time Window 1", group="Signals")
+signalsBlackoutTimeWindow1 = input.session("0915-0945:23456", "Blackout Time Window 1", tooltip="Enter start/end times in the EXCHANGE timezone!", group="Signals")
+
+useSignalsBlackoutTimeWindow2 = input.bool(false, "Prevent signals during the specified Blackout Time Window 2", group="Signals")
+signalsBlackoutTimeWindow2 = input.session("1200-1300:23456", "Blackout Time Window 2", tooltip="Enter start/end times in the EXCHANGE timezone!", group="Signals")
 
 allowSignalRepainting = input.bool(false, "Allow Repainting", tooltip="Allow signal repainting. This can give early warning that a signal is forming, but can also lead to unintended entries if actioned before the signal has confirmed at close of candle.", group="Signals")
 
 entrySignalOffset = input.int(12, "Entry Signal Offset", tooltip="Vertical offset in ticks between entry signal and candle.", group="Signals")
 exitSignalOffset = input.int(4, "Exit Signal Offset", tooltip="Vertical offset in ticks between exit signal and candle.", group="Signals")
 
-useEntryConfluence1 = input.bool(false, "Matching EMA Cloud trend", tooltip = "EMA Cloud must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Entry Confluences")
-useEntryConfluence2 = input.bool(false, "Widening EMA Cloud", tooltip = "EMA Cloud must be spreading wider.", group = "Entry Confluences")
-useEntryConfluence3 = input.bool(false, "Real candle correct color", tooltip = "The real candle must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Entry Confluences")
-useEntryConfluence4 = input.bool(false, "Heikin-Ashi candle correct color", tooltip = "The Heikin-Ashi candle must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Entry Confluences")
-useEntryConfluence5 = input.bool(false, "Heikin-Ashi dot correct color", tooltip = "The Heikin-Ashi dot must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Entry Confluences")
-useEntryConfluence6 = input.bool(false, "Price correct side of MA1", tooltip = "Current real price must be above MA1 for a LONG entry, or below MA1 for a SHORT entry.", group = "Entry Confluences")
-useEntryConfluence7 = input.bool(false, "Price correct side of MA2", tooltip = "Current real price must be above MA2 for a LONG entry, or below MA2 for a SHORT entry.", group = "Entry Confluences")
-useEntryConfluence8 = input.bool(false, "Price correct side of VWAP", tooltip = "Current real price must be above VWAP for a LONG entry, or below VWAP for a SHORT entry.", group = "Entry Confluences")
-useEntryConfluence9 = input.bool(false, "ADX dot medium trend", tooltip = "ADX must be above medium trend strength threshold.", group = "Entry Confluences")
-useEntryConfluence10 = input.bool(false, "ADX dot strong trend", tooltip = "ADX must be above strong trend strength threshold.", group = "Entry Confluences")
-useEntryConfluence11 = input.bool(false, "VolumeDelta dot correct color", tooltip = "The VolumeDelta dot must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Entry Confluences")
+useEntryConfluence1 = input.bool(false, "Real candle correct color", tooltip = "The real candle must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Entry Confluences")
+useEntryConfluence2 = input.bool(false, "Heikin-Ashi candle correct color", tooltip = "The Heikin-Ashi candle must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Entry Confluences")
+useEntryConfluence3 = input.bool(false, "Heikin-Ashi dot correct color", tooltip = "The Heikin-Ashi dot must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Entry Confluences")
+useEntryConfluence4 = input.bool(false, "Heikin-Ashi candle has flat bottom/top", tooltip = "Heikin-Ashi candle must have a flat bottom for a LONG entry, or a flat top for a SHORT entry.", group = "Entry Confluences")
+useEntryConfluence5 = input.bool(false, "Heikin-Ashi candle is not touching EMA Cloud", tooltip = "Heikin-Ashi candle is not touching EMA Cloud.", group = "Entry Confluences")
+useEntryConfluence6 = input.bool(false, "Matching EMA Cloud trend", tooltip = "EMA Cloud must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Entry Confluences")
+useEntryConfluence7 = input.bool(false, "Widening EMA Cloud", tooltip = "EMA Cloud must be spreading wider.", group = "Entry Confluences")
+useEntryConfluence8 = input.bool(false, "Price correct side of MA1", tooltip = "Current real price must be above MA1 for a LONG entry, or below MA1 for a SHORT entry.", group = "Entry Confluences")
+useEntryConfluence9 = input.bool(false, "Price correct side of MA2", tooltip = "Current real price must be above MA2 for a LONG entry, or below MA2 for a SHORT entry.", group = "Entry Confluences")
+useEntryConfluence10 = input.bool(false, "Price correct side of VWAP", tooltip = "Current real price must be above VWAP for a LONG entry, or below VWAP for a SHORT entry.", group = "Entry Confluences")
+useEntryConfluence11 = input.bool(false, "ADX dot medium trend", tooltip = "ADX must be above medium trend strength threshold.", group = "Entry Confluences")
+useEntryConfluence12 = input.bool(false, "ADX dot strong trend", tooltip = "ADX must be above strong trend strength threshold.", group = "Entry Confluences")
+useEntryConfluence13 = input.bool(false, "VolumeDelta dot correct color", tooltip = "The VolumeDelta dot must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Entry Confluences")
 
-useReentryConfluence1 = input.bool(false, "Matching EMA Cloud trend", tooltip = "EMA Cloud must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Re-entry Confluences")
-useReentryConfluence2 = input.bool(false, "Widening EMA Cloud", tooltip = "EMA Cloud must be spreading wider.", group = "Re-entry Confluences")
-useReentryConfluence3 = input.bool(false, "Real candle correct color", tooltip = "The real candle must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Re-entry Confluences")
-useReentryConfluence4 = input.bool(false, "Heikin-Ashi candle correct color", tooltip = "The Heikin-Ashi candle must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Re-entry Confluences")
-useReentryConfluence5 = input.bool(false, "Heikin-Ashi dot correct color", tooltip = "The Heikin-Ashi dot must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Re-entry Confluences")
-useReentryConfluence6 = input.bool(false, "Price correct side of MA1", tooltip = "Current real price must be above MA1 for a LONG entry, or below MA1 for a SHORT entry.", group = "Re-entry Confluences")
-useReentryConfluence7 = input.bool(false, "Price correct side of MA2", tooltip = "Current real price must be above MA2 for a LONG entry, or below MA2 for a SHORT entry.", group = "Re-entry Confluences")
-useReentryConfluence8 = input.bool(false, "Price correct side of VWAP", tooltip = "Current real price must be above VWAP for a LONG entry, or below VWAP for a SHORT entry.", group = "Re-entry Confluences")
-useReentryConfluence9 = input.bool(false, "ADX dot medium trend", tooltip = "ADX must be above medium trend strength threshold.", group = "Re-entry Confluences")
-useReentryConfluence10 = input.bool(false, "ADX dot strong trend", tooltip = "ADX must be above strong trend strength threshold.", group = "Re-entry Confluences")
-useReentryConfluence11 = input.bool(false, "VolumeDelta dot correct color", tooltip = "The VolumeDelta dot must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Re-entry Confluences")
+useReentryConfluence1 = input.bool(false, "Real candle correct color", tooltip = "The real candle must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Re-entry Confluences")
+useReentryConfluence2 = input.bool(false, "Heikin-Ashi candle correct color", tooltip = "The Heikin-Ashi candle must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Re-entry Confluences")
+useReentryConfluence3 = input.bool(false, "Heikin-Ashi dot correct color", tooltip = "The Heikin-Ashi dot must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Re-entry Confluences")
+useReentryConfluence4 = input.bool(false, "Heikin-Ashi candle has flat bottom/top", tooltip = "Heikin-Ashi candle must have a flat bottom for a LONG entry, or a flat top for a SHORT entry.", group = "Re-entry Confluences")
+useReentryConfluence5 = input.bool(false, "Heikin-Ashi candle is not touching EMA Cloud", tooltip = "Heikin-Ashi candle is not touching EMA Cloud.", group = "Re-entry Confluences")
+useReentryConfluence6 = input.bool(false, "Matching EMA Cloud trend", tooltip = "EMA Cloud must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Re-entry Confluences")
+useReentryConfluence7 = input.bool(false, "Widening EMA Cloud", tooltip = "EMA Cloud must be spreading wider.", group = "Re-entry Confluences")
+useReentryConfluence8 = input.bool(false, "Price correct side of MA1", tooltip = "Current real price must be above MA1 for a LONG entry, or below MA1 for a SHORT entry.", group = "Re-entry Confluences")
+useReentryConfluence9 = input.bool(false, "Price correct side of MA2", tooltip = "Current real price must be above MA2 for a LONG entry, or below MA2 for a SHORT entry.", group = "Re-entry Confluences")
+useReentryConfluence10 = input.bool(false, "Price correct side of VWAP", tooltip = "Current real price must be above VWAP for a LONG entry, or below VWAP for a SHORT entry.", group = "Re-entry Confluences")
+useReentryConfluence11 = input.bool(false, "ADX dot medium trend", tooltip = "ADX must be above medium trend strength threshold.", group = "Re-entry Confluences")
+useReentryConfluence12 = input.bool(false, "ADX dot strong trend", tooltip = "ADX must be above strong trend strength threshold.", group = "Re-entry Confluences")
+useReentryConfluence13 = input.bool(false, "VolumeDelta dot correct color", tooltip = "The VolumeDelta dot must be bullish for a LONG entry, or bearish for a SHORT entry.", group = "Re-entry Confluences")
 
 showRealOpen = input.bool(true, "Show Real Open", tooltip="Show the real Open price of each candle using a dot. Useful for Heikin-Ashi candles which show averaged prices.", group="Price Panel - Heikin-Ashi")
 realOpenColor = input.color(color.white, "Real Open Color", group="Price Panel - Heikin-Ashi")
@@ -132,8 +142,8 @@ plotchar(series=chart.is_heikinashi ? realClose : na, title="Real Close Dots", l
 // EMA Cloud
 ////////////////////////////////////////////////////////////////////////////////
 
-emaFast = ta.ema(close, emaFastLen)
-emaSlow = ta.ema(close, emaSlowLen)
+emaFast = ta.ema(realClose, emaFastLen)
+emaSlow = ta.ema(realClose, emaSlowLen)
 
 var displayEMACloud = showEMACloud ? display.all : display.none
 emaFastPlot = plot(emaFast, "Fast EMA", color=color.green, linewidth=2, force_overlay=true, display=display.none)
@@ -290,7 +300,7 @@ var lowerTimeframe = switch
     timeframe.isintraday    => "1"
     timeframe.isdaily       => "5"
     => "60"
-[volUp, volDown, volDelta] = ta.requestUpAndDownVolume(lowerTimeframe)
+[openVolume, maxVolume, minVolume, volDelta] = ta.requestVolumeDelta(lowerTimeframe)
 var cumVol = 0.
 cumVol += nz(volume)
 if barstate.islast and cumVol == 0
@@ -349,95 +359,111 @@ plot(vwapEnabled ? vwap : na, "VWAP", color.aqua, linewidth=2, force_overlay=tru
 // Extra Confluences
 ////////////////////////////////////////////////////////////////////////////////
 
-// Matching EMA Cloud trend
-confluence1Long = (emaFast[0] > emaSlow[0])
-confluence1Short = (emaFast[0] < emaSlow[0])
-
-// Widening EMA Cloud
-confluence2 = math.abs(emaFast[0] - emaSlow[0]) > math.abs(emaFast[1] - emaSlow[1])
-
 // Real candle correct color
-confluence3Long = (realClose[0] > realOpen[0])
-confluence3Short = (realClose[0] < realOpen[0])
+confluence1Long = (realClose[0] > realOpen[0])
+confluence1Short = (realClose[0] < realOpen[0])
 
 // Heikin-Ashi candle correct color
-confluence4Long = (haClose[0] > haOpen[0])
-confluence4Short = (haClose[0] < haOpen[0])
+confluence2Long = (haClose[0] > haOpen[0])
+confluence2Short = (haClose[0] < haOpen[0])
 
 // Heikin-Ashi dot correct color
-confluence5Long = (currBarTrend == prevBarTrend and currBarTrend > 0)
-confluence5Short = (currBarTrend == prevBarTrend and currBarTrend < 0)
+confluence3Long = (currBarTrend == prevBarTrend and currBarTrend > 0)
+confluence3Short = (currBarTrend == prevBarTrend and currBarTrend < 0)
+
+// HA candle with flat bottom/top
+confluence4Long = (haOpen[0] == haLow[0])
+confluence4Short = (haOpen[0] == haHigh[0])
+
+// HA candle not touching EMA Cloud
+confluence5Long = (haLow[0] > math.max(emaFast, emaSlow))
+confluence5Short = (haHigh[0] < math.min(emaFast, emaSlow))
+
+// Matching EMA Cloud trend
+confluence6Long = (emaFast[0] > emaSlow[0])
+confluence6Short = (emaFast[0] < emaSlow[0])
+
+// Widening EMA Cloud
+confluence7 = math.abs(emaFast[0] - emaSlow[0]) > math.abs(emaFast[1] - emaSlow[1])
 
 // Price correct side of MA1
-confluence6Long = (realClose[0] > ma1[0])
-confluence6Short = (realClose[0] < ma1[0])
+confluence8Long = (realClose[0] > ma1[0])
+confluence8Short = (realClose[0] < ma1[0])
 
 // Price correct side of MA2
-confluence7Long = (realClose[0] > ma2[0])
-confluence7Short = (realClose[0] < ma2[0])
+confluence9Long = (realClose[0] > ma2[0])
+confluence9Short = (realClose[0] < ma2[0])
 
 // Price correct side of VWAP
-confluence8Long = (realClose[0] > vwap[0])
-confluence8Short = (realClose[0] < vwap[0])
+confluence10Long = (realClose[0] > vwap[0])
+confluence10Short = (realClose[0] < vwap[0])
 
 // ADX dot medium trend
-confluence9 = (adxValue >= adxMediumTrendThreshold)
+confluence11 = (adxValue >= adxMediumTrendThreshold)
 
 // ADX dot strong trend
-confluence10 = (adxValue >= adxStrongTrendThreshold)
+confluence12 = (adxValue >= adxStrongTrendThreshold)
 
 // VolumeDelta dot correct color
-confluence11Long = (volDelta > 0)
-confluence11Short = (volDelta < 0)
+confluence13Long = (volDelta > 0)
+confluence13Short = (volDelta < 0)
+
 
 entryConfluencesLong = ((not useEntryConfluence1) or (useEntryConfluence1 and confluence1Long)) and
-     ((not useEntryConfluence2) or (useEntryConfluence2 and confluence2)) and
+     ((not useEntryConfluence2) or (useEntryConfluence2 and confluence2Long)) and
      ((not useEntryConfluence3) or (useEntryConfluence3 and confluence3Long)) and
      ((not useEntryConfluence4) or (useEntryConfluence4 and confluence4Long)) and
      ((not useEntryConfluence5) or (useEntryConfluence5 and confluence5Long)) and
      ((not useEntryConfluence6) or (useEntryConfluence6 and confluence6Long)) and
-     ((not useEntryConfluence7) or (useEntryConfluence7 and confluence7Long)) and
+     ((not useEntryConfluence7) or (useEntryConfluence7 and confluence7)) and
      ((not useEntryConfluence8) or (useEntryConfluence8 and confluence8Long)) and
-     ((not useEntryConfluence9) or (useEntryConfluence9 and confluence9)) and
-     ((not useEntryConfluence10) or (useEntryConfluence10 and confluence10)) and
-     ((not useEntryConfluence11) or (useEntryConfluence11 and confluence11Long))
-
+     ((not useEntryConfluence9) or (useEntryConfluence9 and confluence9Long)) and
+     ((not useEntryConfluence10) or (useEntryConfluence10 and confluence10Long)) and
+     ((not useEntryConfluence11) or (useEntryConfluence11 and confluence11)) and
+     ((not useEntryConfluence12) or (useEntryConfluence12 and confluence12)) and
+     ((not useEntryConfluence13) or (useEntryConfluence13 and confluence13Long))
 
 entryConfluencesShort = ((not useEntryConfluence1) or (useEntryConfluence1 and confluence1Short)) and
-     ((not useEntryConfluence2) or (useEntryConfluence2 and confluence2)) and
+     ((not useEntryConfluence2) or (useEntryConfluence2 and confluence2Short)) and
      ((not useEntryConfluence3) or (useEntryConfluence3 and confluence3Short)) and
      ((not useEntryConfluence4) or (useEntryConfluence4 and confluence4Short)) and
      ((not useEntryConfluence5) or (useEntryConfluence5 and confluence5Short)) and
      ((not useEntryConfluence6) or (useEntryConfluence6 and confluence6Short)) and
-     ((not useEntryConfluence7) or (useEntryConfluence7 and confluence7Short)) and
+     ((not useEntryConfluence7) or (useEntryConfluence7 and confluence7)) and
      ((not useEntryConfluence8) or (useEntryConfluence8 and confluence8Short)) and
-     ((not useEntryConfluence9) or (useEntryConfluence9 and confluence9)) and
-     ((not useEntryConfluence10) or (useEntryConfluence10 and confluence10)) and
-     ((not useEntryConfluence11) or (useEntryConfluence11 and confluence11Short))
+     ((not useEntryConfluence9) or (useEntryConfluence9 and confluence9Short)) and
+     ((not useEntryConfluence10) or (useEntryConfluence10 and confluence10Short)) and
+     ((not useEntryConfluence11) or (useEntryConfluence11 and confluence11)) and
+     ((not useEntryConfluence12) or (useEntryConfluence12 and confluence12)) and
+     ((not useEntryConfluence13) or (useEntryConfluence13 and confluence13Short))
 
 reentryConfluencesLong = ((not useReentryConfluence1) or (useReentryConfluence1 and confluence1Long)) and
-     ((not useReentryConfluence2) or (useReentryConfluence2 and confluence2)) and
+     ((not useReentryConfluence2) or (useReentryConfluence2 and confluence2Long)) and
      ((not useReentryConfluence3) or (useReentryConfluence3 and confluence3Long)) and
      ((not useReentryConfluence4) or (useReentryConfluence4 and confluence4Long)) and
      ((not useReentryConfluence5) or (useReentryConfluence5 and confluence5Long)) and
      ((not useReentryConfluence6) or (useReentryConfluence6 and confluence6Long)) and
-     ((not useReentryConfluence7) or (useReentryConfluence7 and confluence7Long)) and
+     ((not useReentryConfluence7) or (useReentryConfluence7 and confluence7)) and
      ((not useReentryConfluence8) or (useReentryConfluence8 and confluence8Long)) and
-     ((not useReentryConfluence9) or (useReentryConfluence9 and confluence9)) and
-     ((not useReentryConfluence10) or (useReentryConfluence10 and confluence10)) and
-     ((not useReentryConfluence11) or (useReentryConfluence11 and confluence11Long))
+     ((not useReentryConfluence9) or (useReentryConfluence9 and confluence9Long)) and
+     ((not useReentryConfluence10) or (useReentryConfluence10 and confluence10Long)) and
+     ((not useReentryConfluence11) or (useReentryConfluence11 and confluence11)) and
+     ((not useReentryConfluence12) or (useReentryConfluence12 and confluence12)) and
+     ((not useReentryConfluence13) or (useReentryConfluence13 and confluence13Long))
 
 reentryConfluencesShort = ((not useReentryConfluence1) or (useReentryConfluence1 and confluence1Short)) and
-     ((not useReentryConfluence2) or (useReentryConfluence2 and confluence2)) and
+     ((not useReentryConfluence2) or (useReentryConfluence2 and confluence2Short)) and
      ((not useReentryConfluence3) or (useReentryConfluence3 and confluence3Short)) and
      ((not useReentryConfluence4) or (useReentryConfluence4 and confluence4Short)) and
      ((not useReentryConfluence5) or (useReentryConfluence5 and confluence5Short)) and
      ((not useReentryConfluence6) or (useReentryConfluence6 and confluence6Short)) and
-     ((not useReentryConfluence7) or (useReentryConfluence7 and confluence7Short)) and
+     ((not useReentryConfluence7) or (useReentryConfluence7 and confluence7)) and
      ((not useReentryConfluence8) or (useReentryConfluence8 and confluence8Short)) and
-     ((not useReentryConfluence9) or (useReentryConfluence9 and confluence9)) and
-     ((not useReentryConfluence10) or (useReentryConfluence10 and confluence10)) and
-     ((not useReentryConfluence11) or (useReentryConfluence11 and confluence11Short))
+     ((not useReentryConfluence9) or (useReentryConfluence9 and confluence9Short)) and
+     ((not useReentryConfluence10) or (useReentryConfluence10 and confluence10Short)) and
+     ((not useReentryConfluence11) or (useReentryConfluence11 and confluence11)) and
+     ((not useReentryConfluence12) or (useReentryConfluence12 and confluence12)) and
+     ((not useReentryConfluence13) or (useReentryConfluence13 and confluence13Short))
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -445,8 +471,11 @@ reentryConfluencesShort = ((not useReentryConfluence1) or (useReentryConfluence1
 ////////////////////////////////////////////////////////////////////////////////
 
 allowSignals(int idx) =>
-    (not useSignalsTimeWindow) or
-     (useSignalsTimeWindow and not na(time(timeframe.period, signalsTimeWindow, syminfo.timezone, idx)))
+    ((not useSignalsTradingTimeWindow) or (useSignalsTradingTimeWindow and not na(time(timeframe.period, signalsTradingTimeWindow, syminfo.timezone, idx))))
+     and
+     ((not useSignalsBlackoutTimeWindow1) or (useSignalsBlackoutTimeWindow1 and na(time(timeframe.period, signalsBlackoutTimeWindow1, syminfo.timezone, idx))))
+     and
+     ((not useSignalsBlackoutTimeWindow2) or (useSignalsBlackoutTimeWindow2 and na(time(timeframe.period, signalsBlackoutTimeWindow2, syminfo.timezone, idx))))
 
 bgcolor(allowSignals(0) ? na : color.rgb(50,50,60,0), force_overlay=true)
 
