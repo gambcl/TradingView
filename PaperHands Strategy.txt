@@ -1,5 +1,5 @@
 //@version=6
-strategy("PaperHands Strategy v1.7",
+strategy("PaperHands Strategy v1.8",
      overlay=false,
      explicit_plot_zorder=true,
      calc_on_order_fills=false,
@@ -64,6 +64,9 @@ enableTradingTimeWindowFlatten = input.bool(false, "Flatten position at end of T
 enableBlackoutTimeWindowFlatten = input.bool(false, "Flatten position at start of Blackout Time Windows", tooltip="Enables closing of open positions at start of specified Blackout Time Windows.", group="Strategy")
 
 atrLen = input.int(14, "ATR Length", minval=1, tooltip="Length of the ATR used for Take-Profit and Stop-Loss calculations.", group="Strategy")
+
+sessionProfitThreshold = input.int(0, "Session Profit Threshold", minval=0, tooltip="Prevent opening new positions in the current trading session after the specified profit threshold has been reached (0 = disabled). Resets at the start of each new trading session.", group="Strategy")
+sessionLossThreshold = input.int(0, "Session Loss Threshold", minval=0, tooltip="Prevent opening new positions in the current trading session after the specified loss threshold has been reached (0 = disabled). Resets at the start of each new trading session.", group="Strategy")
 
 
 showEnterLongSignals = input.bool(true, "Enter LONG", tooltip="Show LONG entry signals.", group="Signals")
@@ -651,6 +654,15 @@ var float takeProfitPrice = na          // The current take-profit order price.
 var float stopLossPrice = na            // The current stop-loss order price.
 var bool trailingSLTriggered = false    // Indicates if trailing SL has been triggered.
 var bool resetPrices = false            // Indicates if chart price levels should be reset (after a position closes)
+var float sessionInitialNetProfit = 0.0 // Keeps track of net profit at start of the current session.
+var bool sessionCanTrade = true         // Keeps track of trading enabled status for the current session.
+
+// Reset session threshold states at start of new session.
+if (barstate.isnew and session.isfirstbar)
+    // First bar of new session.
+    log.info("Previous session net profit {0}", (strategy.netprofit - sessionInitialNetProfit))
+    sessionInitialNetProfit := strategy.netprofit
+    sessionCanTrade := true
 
 // Exit
 if (strategy.opentrades > 0)
@@ -712,14 +724,14 @@ if (strategy.opentrades == 0)
         stopLossPrice := na
         trailingSLTriggered := false
         resetPrices := false
-    if (enterLongSignal or reenterLongSignal)
+    if (enterLongSignal or reenterLongSignal) and sessionCanTrade
         entryPrice := realClose
         takeProfitPrice := calc_long_tp_price(entryPrice)
         stopLossPrice := calc_long_sl_price(entryPrice)
         trailingSLTriggered := false
         strategy.entry("Long", strategy.long)
         strategy.exit("Long", limit=takeProfitPrice, stop=stopLossPrice, comment_profit="TP", comment_loss="SL", trail_points=(slEnableTrailing ? slTrailingTriggerTicks : na), trail_offset=(slEnableTrailing ? slTrailingOffsetTicks : na), comment_trailing=(slEnableTrailing ? "Trailing SL" : na))
-    else if (enterShortSignal or reenterShortSignal)
+    else if (enterShortSignal or reenterShortSignal) and sessionCanTrade
         entryPrice := realClose
         takeProfitPrice := calc_short_tp_price(entryPrice)
         stopLossPrice := calc_short_sl_price(entryPrice)
@@ -730,6 +742,14 @@ if (strategy.opentrades == 0)
 // Clear EP/TP/SL when the position closes.
 if ta.change(strategy.closedtrades) > 0
     resetPrices := true
+    // Update session threshold states.
+    if (sessionProfitThreshold > 0) and (strategy.netprofit - sessionInitialNetProfit) >= sessionProfitThreshold
+        log.info("Session profit {0} reached profit threshold {1}", (strategy.netprofit - sessionInitialNetProfit), sessionProfitThreshold)
+        sessionCanTrade := false
+    if (sessionLossThreshold > 0) and (strategy.netprofit - sessionInitialNetProfit) <= (-sessionLossThreshold)
+        log.info("Session loss {0} reached loss threshold {1}", (strategy.netprofit - sessionInitialNetProfit), -sessionLossThreshold)
+        sessionCanTrade := false
+
 
 plot(entryPrice, "EP", color=color.white, style=plot.style_linebr, linewidth=2, force_overlay=true)
 plot(takeProfitPrice, "TP", color=color.green, style=plot.style_linebr, linewidth=2, force_overlay=true)
