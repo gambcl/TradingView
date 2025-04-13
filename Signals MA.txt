@@ -1,0 +1,55 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © gambcl
+
+//@version=6
+indicator("Signals MA", overlay=true)
+
+enum MAType
+    SMA = "SMA"
+    EMA = "EMA"
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Inputs
+////////////////////////////////////////////////////////////////////////////////
+
+int i_length = input.int(20, "Length", minval=1, maxval=999)
+MAType i_type = input.enum(MAType.SMA, "Type")
+color i_color = input.color(color.white, "Color")
+
+bool i_useSignalColors = input.bool(false, "Use Signal Colors", group="SIGNALS")
+color i_buyColor = input.color(color.green, "Buy Color", group="SIGNALS")
+color i_sellColor = input.color(color.red, "Sell Color", group="SIGNALS")
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Calculate MA
+////////////////////////////////////////////////////////////////////////////////
+
+ma = (i_type == MAType.EMA) ? ta.ema(close, i_length) : ta.sma(close, i_length)
+
+plot(ma, "MA", color=i_color, linewidth=2)
+
+breakout = close[1] <= ma[1] and close > ma
+breakdown = close[1] >= ma[1] and close < ma
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Plotting
+////////////////////////////////////////////////////////////////////////////////
+
+plotshape(breakout, "Breakout", shape.arrowup, location=location.belowbar, color=i_useSignalColors ? i_buyColor : i_color, display=display.pane)
+plotshape(breakdown, "Breakdown", shape.arrowdown, location=location.abovebar, color=i_useSignalColors ? i_sellColor : i_color, display=display.pane)
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Alerts
+////////////////////////////////////////////////////////////////////////////////
+
+alertcondition(breakout, "Breakout")
+alertcondition(breakdown, "Breakdown")
+
+if (breakout)
+    alert("Price closed above " + str.tostring(i_length) + " " + (i_type == MAType.EMA ? "EMA" : "SMA"))
+if (breakdown)
+    alert("Price closed below " + str.tostring(i_length) + " " + (i_type == MAType.EMA ? "EMA" : "SMA"))
